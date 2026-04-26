@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "Sportsbook Arb Scanner",
+  "version": "0.1.0",
+  "description": "Scans open Ontario sportsbook tabs for arbitrage opportunities. Phase 1 of cash project.",
+  "minimum_chrome_version": "114",
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "alarms",
+    "tabs",
+    "windows"
+  ],
+  "host_permissions": [
+    "*://*.betmgm.ca/*",
+    "*://*.fanduel.com/*",
+    "http://localhost/*",
+    "http://localhost:*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
+  "action": {
+    "default_title": "Open Arb Scanner side panel"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.betmgm.ca/*",
+        "*://*.fanduel.com/*"
+      ],
+      "js": ["content/hello.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*.betmgm.ca/*"],
+      "js": ["content/betmgm.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*.fanduel.com/*"],
+      "js": ["content/fanduel.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

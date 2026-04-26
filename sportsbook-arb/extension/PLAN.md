@@ -2,6 +2,31 @@
 
 Ships in 9 phases. Each phase is a complete, demonstrable milestone — we don't move to the next one until the current one works end-to-end on a real Ontario sportsbook page.
 
+---
+
+## Status as of 2026-04-26
+
+The phase order in this document is the original plan. The actual build deviated — Phases 2/4/5 shipped together, Phase 8 (sport expansion) was pulled forward, and Phase 6 (risk scoring) was deferred. The owner's current scope:
+
+> Get extractors for BetMGM + FanDuel → arb math → side panel UI → multi-sport coverage → first real arb in the wild → then risk scoring → then more books.
+
+| Phase | Status | Notes |
+|---|---|---|
+| 0 — Scaffolding | ✅ shipped | manifest, books registry, markets allowlist, side panel skeleton |
+| 1 — BetMGM NHL moneyline reader | ✅ shipped | build v9 (multi-sport) |
+| 2 — Background aggregation | ✅ shipped | with serial queue around storage to defeat the multi-tab race |
+| 3 — FanDuel NHL moneyline reader | ✅ shipped | build v2 (multi-sport) |
+| 4 — Arb detection + stake calculator + market filter | ✅ partial | arb math + stake split shipped + tested. Market filter not yet enforced at detection time (only moneylines are scraped today, so nothing reaches the filter) |
+| 5 — Side panel UI | ✅ shipped | arbs section + matched-events section (debug affordance) + stake input + LIVE badges + per-league color tags |
+| 6 — Risk scoring + tracker bridge | ⏳ pending | owner doing this in the next session |
+| 7 — Bet365 | ⏳ deferred | until first real arb confirmed across the easier two books |
+| 8 — Sport / market expansion | ✅ partial | NHL + NBA + NFL + MLB shipped (moneylines). **Soccer killed** by owner. Tennis pending DOM capture. Other markets per sport (spread/totals) deferred |
+| 9 — Polish | ✅ partial | "Open scan tabs" button shipped. Notifications, history view, freshness indicator, closing-odds capture, selector-health panel display all deferred |
+
+See [`CHANGELOG.md`](./CHANGELOG.md) for what shipped per session and the manual-verification record.
+
+---
+
 > Risk scoring (Phase 6) ships before adding more books or sports. The rules — fact-checked in [`../tracker/DETECTION_RESEARCH.md`](../tracker/DETECTION_RESEARCH.md) — are the foundation of the strategy. Every alert should carry a verdict from the moment alerts exist.
 
 > **Two non-obvious behaviours that come from the rulebook and constrain the design:**
@@ -13,14 +38,17 @@ Ships in 9 phases. Each phase is a complete, demonstrable milestone — we don't
 
 ## Phase 0 — Scaffolding
 
-**Goal:** an empty extension installed in a dev Chrome profile that proves the harness works.
+**Goal:** an empty extension installed in a dev Chrome profile that proves the harness works, with the dynamic book registry and approved-markets list in place from day one.
 
-- `manifest.json` (Manifest V3, minimum permissions: `notifications`, `storage`, `alarms`, host permissions for the targeted books, `http://localhost:*/*` for the Phase 6 bridge)
-- `background.js` — service worker that logs `"extension loaded"` on install
-- `content/hello.js` — minimal content script injected on the first-target book's domain
-- Verify install instructions in [`README.md`](./README.md) work end-to-end in a real Chrome profile
+- `manifest.json` (Manifest V3, permissions: `sidePanel`, `storage`, `alarms`, `tabs`, `windows`, host permissions matching every entry in `lib/books.js`, `http://localhost:*/*` for the Phase 6 bridge)
+- `background.js` — service worker that logs `"extension loaded"` on install and registers the side panel
+- `content/hello.js` — minimal content script injected on every registered book's host
+- `sidepanel/sidepanel.{html,js,css}` — empty side panel that confirms it can open
+- `lib/books.js` — dynamic registry of books the user has accounts on. Add a book = add an entry + matching `host_permissions` line + a `content/<book>.js` selector script. Default multiplier `1.00` per `../tracker/rules.md`.
+- `lib/markets.js` — approved sports + markets allowlist (positive list; everything else is rejected)
+- `CHANGELOG.md` — created here; every phase appends what was built and what was manually verified
 
-**Done when:** opening the target sportsbook in the dev profile shows our `"hello"` log in the page console.
+**Done when:** opening any registered sportsbook in the dev profile shows our `"hello"` log in the page console; clicking the extension icon opens the side panel.
 
 ---
 
@@ -85,18 +113,19 @@ Ships in 9 phases. Each phase is a complete, demonstrable milestone — we don't
 
 ---
 
-## Phase 5 — Notifications (no verdict yet)
+## Phase 5 — Side panel UI (no verdict yet)
 
-**Goal:** alerts the user can act on without staring at a console — and *without* the extension auto-actioning anything in the sportsbook page.
+**Goal:** detected arbs appear in the side panel as they're found, with stake breakdowns the user can copy — *without* the extension auto-actioning anything in the sportsbook page.
 
-- Native desktop notification via `chrome.notifications.create` (the `notifications` permission was declared in Phase 0; first-run consent triggered by an explicit "send test notification" button in the popup)
-- Body example: `"NHL TOR/BOS — bet $80 on TOR @ BetMGM (-130), $100 on BOS @ FanDuel (+115). Profit ~$4 (2.1%)"`
-- Click notification → opens an extension popup with full arb details and **copy-to-clipboard** buttons for each leg's stake
-- **Auto-fill / auto-paste forbidden.** The popup must never set the value of any sportsbook page input. This is a hard rule from `../tracker/rules.md` — behavioural biometrics track mouse movement and typing cadence; programmatic stake input creates a fingerprint anomaly. Stake fields are typed by the user, manually, after copying from the popup.
-- Cooldown: don't re-alert the same arb within 10 minutes unless odds materially change
+- Side panel (`sidepanel/sidepanel.html` + `.js` + `.css`) renders an arb list. Background pushes updates to it via `chrome.runtime.sendMessage`; the panel listens.
+- Each arb row example: `"NHL TOR/BOS — bet $80 on TOR @ BetMGM (-130), $100 on BOS @ FanDuel (+115). Profit ~$4 (2.1%)"`
+- Each leg has a **copy-to-clipboard** button for its stake amount
+- **Auto-fill / auto-paste forbidden.** The side panel must never set the value of any sportsbook page input. Behavioural biometrics track mouse movement and typing cadence — programmatic stake input creates a fingerprint anomaly. The user copies, switches to the sportsbook tab, and types manually.
+- Empty state: when no arbs exist, the panel shows the count of (book × sport) tabs being monitored and the timestamp of the last scan, so the user can tell the system is alive.
+- Cooldown: don't re-render the same arb as new within 10 minutes unless odds materially change. (Once it's in the list it stays; cooldown prevents flashing it as "NEW" repeatedly.)
 - *Verdict (`GO` / `WAIT` / `SKIP`) is added in Phase 6. Phase 5 ships only the stake breakdown.*
 
-**Done when:** a real arb (or test-injected one) fires a clickable native notification → opens popup → copy-to-clipboard works on each leg's stake; verified that no DOM mutation happens on any sportsbook page from the extension.
+**Done when:** a real arb (or test-injected one) appears in the side panel within seconds of being detected; copy-to-clipboard works on each leg's stake; verified that no DOM mutation happens on any sportsbook page from the extension.
 
 ---
 
@@ -143,10 +172,10 @@ With 6 hard-block factors evaluated by the bridge, falling back to `GO` when the
 
 History-free checks that still run when bridge is offline: stake rounding, market-filter (since markets.js is in the extension, not the bridge), basic stake-vs-default-cap (using the `MIN_FLOAT_PER_BOOK_CAD` floor since live `current_balance` is unknown).
 
-### Phase 5 alerts extended
+### Phase 5 panel extended
 
-- Notification body now ends with verdict tag: e.g. `"… Profit ~$4 (2.1%) [GO]"`
-- Popup shows full reasoning trace per pairing
+- Each arb row in the side panel ends with a verdict tag: `[GO]`, `[WAIT]`, or `[SKIP]`
+- Expanding a row shows the full reasoning trace per pairing
 - `WAIT` and `SKIP` verdicts highlighted; copy-to-clipboard buttons hidden behind a "show anyway" toggle on `WAIT` and disabled entirely on `SKIP`
 
 ### Extension does not write events
@@ -191,15 +220,15 @@ Events are still logged via Claude in chat — per [`../tracker/README.md`](../t
 
 ## Phase 9 — Polish + closing-odds capture
 
-- Extension icon popup: last N arbs, current odds count per book, selector-health warnings, bridge-online indicator, VPN-unverified warning
-- Per-book selector health check: alert if a book starts returning empty results (likely DOM redesign)
+- Side panel header: last N arbs, current odds count per book, selector-health warnings, bridge-online indicator, VPN-unverified warning
+- Per-book selector health check: surface in the panel if a book starts returning empty results (likely DOM redesign)
 - Per-arb history view: log every detected arb to `chrome.storage.local` with whether the user acted on it
-- Surfaced error logging in the popup (no need to open DevTools)
-- "Open scan tabs" buttons: one click opens the standard URL set for a chosen sport across all books
-- **Closing-odds capture for CLV scoring:** persist a per-event time series of odds in `chrome.storage.local` (in addition to current odds in `chrome.storage.session`). When a user logs a settlement via Claude in chat, the scorer can pull the last-observed odds before scheduled start time as `closing_odds`. Until this ships, the user notes closing odds manually at settlement. CLV is the primary signal in `RISK_SCORING.md`, so this polish is high-value, not cosmetic. Includes a TTL/pruning strategy: drop history for events that finished > 7 days ago.
-- **Approved-markets list maintenance UI:** popup shows the current `lib/markets.js` list. Editing the list still requires editing the file (intentional friction — adding non-major markets bypasses a hard-SKIP and accelerates account limiting).
+- Surfaced error logging in the panel (no need to open DevTools)
+- **"Open scan window" button:** one click opens a separate Chrome window (`chrome.windows.create`) populated with one tab per (book × sport) combination from `lib/books.js`. The user minimizes that window and works in their main window with the panel. This is the *primary* way to start a scanning session.
+- **Closing-odds capture for CLV scoring:** persist a per-event time series of odds in `chrome.storage.local` (in addition to current odds in `chrome.storage.session`). When a user logs a settlement via Claude in chat, the scorer can pull the last-observed odds at scheduled start time as `closing_odds`. Until this ships, the user notes closing odds manually at settlement. CLV is the primary signal in `RISK_SCORING.md`, so this polish is high-value, not cosmetic. TTL: drop history at scheduled game start (closing odds are captured at start; later odds are post-game noise).
+- **Approved-markets list view:** panel shows the current `lib/markets.js` list. Editing the list still requires editing the file (intentional friction — adding non-major markets bypasses a hard-SKIP and accelerates account limiting).
 
-**Done when:** a normal scanning session is observable from the popup alone, no DevTools required; closing-odds auto-fill works on at least one settled bet end-to-end.
+**Done when:** a normal scanning session is observable from the side panel alone, no DevTools required; closing-odds auto-fill works on at least one settled bet end-to-end.
 
 ---
 
@@ -217,11 +246,11 @@ Events are still logged via Claude in chat — per [`../tracker/README.md`](../t
 
 - **Service workers are short-lived.** Chrome shuts down idle workers within ~30s. Any state that needs to survive must be in `chrome.storage` (not module-scope variables). Phase 2 handles this for odds; risk-score caches in Phase 6 follow the same pattern.
 - **`setInterval` doesn't survive worker shutdown.** Use `chrome.alarms` for any background polling that needs to outlive idle periods. (Content-script polling inside live tabs is fine — those run in the page's own context.)
-- **Notification permissions.** Declared in `manifest.json` but the OS may still prompt on first notification. The Phase 5 "send test notification" button forces explicit first-run consent.
+- **Side panel API requires Chrome 114+.** Manifest declares `"side_panel": { "default_path": "sidepanel/sidepanel.html" }` plus the `sidePanel` permission. `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })` makes clicking the toolbar icon open the panel.
 - **Cross-origin requests from the extension to `localhost:NNNN`** (the Phase 6 bridge) require `http://localhost:*/*` in `host_permissions`. Without this, fetch fails silently.
 - **Content-script injection timing.** Use `run_at: "document_idle"` for sportsbook pages — they hydrate odds asynchronously, and `document_start` would scrape a blank page.
 - **Behavioural-biometrics constraint (research-backed).** The extension MUST NOT set values in any sportsbook page DOM. Sportsbook detection (per `DETECTION_RESEARCH.md`) tracks mouse movement and typing cadence; programmatic input creates a fingerprint anomaly. The extension reads the page; the user types into it. Enforce in code review: no `.value =`, no `dispatchEvent`, no `click()` on sportsbook page elements.
-- **VPN detection limitation.** From a localhost server, detecting VPN/proxy reliably needs either an external IP-geolocation API (rejected) or special browser permissions. v1 documents the gap in the popup and relies on user discipline. Future: a content script could fetch a known geo-aware endpoint and report results to the bridge.
+- **VPN detection limitation.** From a localhost server, detecting VPN/proxy reliably needs either an external IP-geolocation API (rejected) or special browser permissions. v1 documents the gap in the side panel and relies on user discipline. Future: a content script could fetch a known geo-aware endpoint and report results to the bridge.
 
 ---
 
@@ -245,28 +274,30 @@ sportsbook-arb/
     manifest.json
     background.js
     content/
-      fanduel.js
-      betmgm.js
-      bet365.js
+      hello.js            # Phase 0 placeholder
+      fanduel.js          # Phase 3
+      betmgm.js           # Phase 1
+      bet365.js           # Phase 7 (deferred)
     lib/
-      arb.js              # arb detection + stake math (pure)
+      books.js            # dynamic registry of books (Phase 0)
+      markets.js          # approved sports + markets list (Phase 0)
+      markets.test.js     # Phase 4
+      arb.js              # arb detection + stake math (Phase 4)
       arb.test.js
-      markets.js          # approved sports + markets list (pure)
-      markets.test.js
-      normalize.js        # team-name canonicalization
+      normalize.js        # team-name canonicalization (Phase 3)
       normalize.test.js
-      risk.js             # risk scoring per RISK_SCORING.md (pure)
+      risk.js             # risk scoring per RISK_SCORING.md (Phase 6)
       risk.test.js
-    popup/
-      popup.html
-      popup.js
-      popup.css
+    sidepanel/
+      sidepanel.html      # Phase 0 placeholder; live UI from Phase 5
+      sidepanel.js
+      sidepanel.css
     test/
       fixtures/           # captured DOM snapshots per book
     README.md
     PLAN.md
     RISK_SCORING.md       # contract for risk evaluation
-    CHANGELOG.md          # added when Phase 1 ships
+    CHANGELOG.md          # added in Phase 0
   local-bridge/           # Phase 6; sibling of extension/, not part of it
     server.js
     package.json
@@ -274,14 +305,14 @@ sportsbook-arb/
 
 ---
 
-## Open questions (resolve before Phase 0)
+## Resolved decisions (locked at build start)
 
-1. **First two books.** Default: BetMGM + FanDuel. Bet365 deferred to Phase 7.
-2. **First sport.** Default: NHL.
-3. **Notification style.** Native macOS notification (default), in-page banner, or both?
-4. **Scanning browser.** Chrome second profile or Brave? (Either works; Brave has slightly stricter defaults out of the box.)
-
-Resolve these and Phase 0 can start.
+1. **First two books:** BetMGM + FanDuel. Bet365 → Phase 7.
+2. **First sport:** NHL.
+3. **UI surface:** side panel (Chrome 114+). No native notifications. No popup.
+4. **Books config:** dynamic registry in `lib/books.js`. Add a book = registry entry + matching `host_permissions` in manifest + per-book content script with that book's selectors.
+5. **Bankroll/balance:** dynamic per book, derived from `../tracker/events.jsonl` by the Phase 6 bridge. No hardcoded amounts anywhere.
+6. **Multi-tab strategy:** one tab per (book × sport), opened by the Phase 9 "Open scan window" helper into a separate Chrome window the user minimizes. No URL-cycling within a tab.
 
 ---
 

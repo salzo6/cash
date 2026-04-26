@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Arb Scanner</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <header>
+      <div class="header-row">
+        <h1>Arb Scanner</h1>
+        <div id="status" class="status">initializing…</div>
+      </div>
+      <div class="controls-row">
+        <div class="stake-row">
+          <label for="stake-input">Stake</label>
+          <span class="prefix">$</span>
+          <input id="stake-input" type="number" min="5" step="5" value="100" />
+          <span class="suffix">CAD</span>
+        </div>
+        <button id="open-scan-btn" type="button" class="open-scan-btn" title="Open one tab per book × sport in a new window">
+          Open scan tabs
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <section id="arbs-section">
+        <h2>Arbs <span class="count" id="arbs-count">0</span></h2>
+        <ul id="arb-list"></ul>
+        <p id="arbs-empty" class="empty">No arbs yet.</p>
+      </section>
+
+      <section id="matches-section">
+        <h2>Matched events <span class="count" id="matches-count">0</span></h2>
+        <ul id="match-list"></ul>
+        <p id="matches-empty" class="empty">
+          No matches yet. Open the same league on two registered books to start.
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <small id="phase-tag">phase 2 / 4 / 5 — arbs live</small>
+    </footer>
+
+    <script src="sidepanel.js" type="module"></script>
+  </body>
+</html>
