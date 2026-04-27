@@ -18,7 +18,7 @@ The phase order in this document is the original plan. The actual build deviated
 | 3 — FanDuel NHL moneyline reader | ✅ shipped | build v2 (multi-sport) |
 | 4 — Arb detection + stake calculator + market filter | ✅ partial | arb math + stake split shipped + tested. Market filter not yet enforced at detection time (only moneylines are scraped today, so nothing reaches the filter) |
 | 5 — Side panel UI | ✅ shipped | arbs section + matched-events section (debug affordance) + stake input + LIVE badges + per-league color tags |
-| 6 — Risk scoring + tracker bridge | ⏳ pending | owner doing this in the next session |
+| 6 — Risk scoring + tracker bridge | ✅ shipped | local bridge + `lib/risk.js` (all 18 factors + multipliers + offline fallback) + side panel verdict tags / reasoning trace / banners |
 | 7 — Bet365 | ⏳ deferred | until first real arb confirmed across the easier two books |
 | 8 — Sport / market expansion | ✅ partial | NHL + NBA + NFL + MLB shipped (moneylines). **Soccer killed** by owner. Tennis pending DOM capture. Other markets per sport (spread/totals) deferred |
 | 9 — Polish | ✅ partial | "Open scan tabs" button shipped. Notifications, history view, freshness indicator, closing-odds capture, selector-health panel display all deferred |

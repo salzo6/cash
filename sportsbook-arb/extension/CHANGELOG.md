@@ -166,6 +166,41 @@ Phases 2, 4, and 5 of the original plan ship together because they're a single u
 
 ---
 
+## Phase 6 — Risk scoring + tracker bridge (2026-04-26)
+
+Every arb in the side panel now carries a `[GO]` / `[WAIT]` / `[SKIP]` verdict per pairing with an expandable reasoning trace, evaluated against the full 18-factor contract in [`RISK_SCORING.md`](./RISK_SCORING.md).
+
+### Shipped
+
+- **`../local-bridge/`** — read-only HTTP bridge (Node http stdlib, zero dependencies, ~80 LOC). `GET /state` re-reads `../tracker/events.jsonl` and `../tracker/rules.md` on every request — no caching — so threshold edits and new event logs both take effect immediately. Default port `5731`. Bun stdlib also works (`bun run server.js`); Node was used because `bun` isn't installed locally and the constraint was "stdlib, no framework," not "Bun specifically."
+  - `local-bridge/state.js` — pure `parseEvents` + `parseRules` + `deriveState` functions. Replays event history into per-book derived state (current_balance, total_pnl, account_age_days, non_arb_bets_count, recent_avg_stake, recent_max_stake, bets_last_7d, last_{bet,deposit,withdrawal}_at, recent_clv_avg, recent_cashouts_count, status) plus a global `pairings_last_30d` counter keyed by sorted book pair.
+  - `local-bridge/state.test.js` — synthetic event lists exercise every derived field plus the rules.md table parser. Run with `node state.test.js`.
+  - **Read-only by design** — events are still appended by Claude in chat per `../tracker/README.md`. The extension never writes to `events.jsonl`.
+- **`lib/risk.js`** — pure scoring function, no I/O, no DOM. Implements all 6 hard-SKIP factors and 12 behavioural-risk factors from `RISK_SCORING.md`. Per-book multiplier applied (`final_leg_score = clamp(sum(factors) × multiplier, 0, 1)`). Pairing score = `max(leg_a, leg_b)` — worse leg drives the verdict. Verdict thresholds `GO < 0.30 ≤ WAIT < 0.60 ≤ SKIP`; any hard-SKIP factor forces `SKIP` regardless of score. Re-imports `lib/markets.js` for the market-filter hard-block (defense-in-depth, since Phase 4 should already filter upstream).
+- **`lib/risk.test.js`** — 30+ assertions covering each of the 18 factors individually, per-book multiplier (FanDuel 0.95 brings 0.30 raw down to 0.285 → GO; Bet365 1.10 amplifies 0.30 raw to 0.33 → WAIT), pairing-score `max()` rule, hard-block forcing-SKIP-regardless-of-score, the WAIT/SKIP verdict-threshold boundaries, the bridge-offline path including its history-free hard-block (market filter), the history-free behavioural check (stake rounding), and stake-vs-default-cap fallback. Run with `node lib/risk.test.js`.
+- **`background.js`** — `fetchBridgeState()` calls the bridge per `computeAndBroadcast` pass with a 1.5s `AbortController` timeout. Every detected arb gets `{ verdict, pairing_score, bridge_status, vpn_check, legs: [{factors, reasoning, ...}] }` attached as `risk` in the `ARBS_UPDATE` payload. Payload also includes a `bridge` summary `{ online, url, generated_at_iso, vpn_check, event_count }` for the panel banners.
+- **`sidepanel/`** — verdict tag (`[GO]` green / `[WAIT]` gold / `[SKIP]` red) on every arb card, color-coded left border per verdict. Expandable `<details>` reasoning trace per arb shows per-leg factors with their weight, label, and rule citation, plus the hard-skip rows highlighted red and the per-book multiplier line when ≠ 1.00. **Stake button per leg gates by verdict:** `GO` shows the normal copy-to-clipboard button; `WAIT` requires a "show $" click first to reveal the stake (then a second click copies); `SKIP` shows the stake struck-through and disabled. Bridge-offline banner (gold) appears at the top of `<main>` whenever the bridge is unreachable; VPN-unverified banner is always visible per the v1 limitation in `RISK_SCORING.md`.
+
+### Phase 6 contract verification (2026-04-26 — passed)
+
+- Two new entries in `tracker/events.jsonl`: FanDuel $100 deposit (2026-04-25), BetMGM $100 deposit (2026-04-26), both via Interac e-Transfer.
+- `curl http://127.0.0.1:5731/state` returns the expected derived state for both books — FanDuel `account_age_days=1`, BetMGM `account_age_days=0`, both `current_balance=100`, both `non_arb_bets_count=0`.
+- End-to-end smoke (bridge + risk.js): a synthetic NHL moneyline arb with $50/$50 stakes correctly returns `verdict: SKIP, pairing_score: 1.00` with three hard-SKIP factors per leg — `account_too_new`, `insufficient_recreational_history`, `stake_exceeds_float_cap` (50% of the $100 float). FanDuel leg's reasoning trace shows the per-book 0.95 multiplier applied. This is the rulebook talking — these accounts cannot be safely arb'd until they age 30 days, see 5+ recreational bets, and have a bigger float.
+- 30+ `risk.test.js` assertions all pass; `state.test.js` 8 assertions all pass.
+
+### Known gaps (per `RISK_SCORING.md` and `PLAN.md` Phase 6 section)
+
+- **VPN factor 6** stays `UNVERIFIED` — the bridge has no reliable way to detect VPN/proxy from localhost. Documented; the side panel shows a persistent "VPN check unverified — relying on user discipline" indicator.
+- **CLV factor (high / moderate)** stays silent until enough `bet_settled` events have `closing_odds` populated. That's expected; closing-odds capture is Phase 9 polish. Other factors carry the verdict in the meantime.
+- **`bun` not installed locally** — bridge uses Node http stdlib instead. Same constraint (stdlib, no framework, no deps) — runs out of the box on either runtime.
+
+### Process notes
+
+- Bug caught during state.test.js: `bet_settled` and `bet_cashed_out` handlers were calling `bookSlot(placed._book)` before the post-loop fixup that set `_book` on each placed bet. Fix: stamp `_book` at placement time in the handler instead of as a separate pass. Tests went from 6 fails to 0 fails immediately.
+- The "every arb is SKIP" output for the just-deposited accounts is **the correct steady state for early-ramp** — the rulebook's hard-blocks exist precisely to prevent arbing on a 0-day account with no recreational history. This is the system working as designed, not a bug. As accounts age past 30d and accumulate 5+ recreational bets, the hard-blocks clear and behavioural-only verdicts (GO / WAIT) start firing.
+
+---
+
 ## Stability + scan-window helper (2026-04-26)
 
 Discovered during multi-sport verification: with 6+ tabs polling concurrently, several real bugs surfaced. Fixed in this pass plus the Phase 9 "Open scan tabs" helper since it was a small wire-up.

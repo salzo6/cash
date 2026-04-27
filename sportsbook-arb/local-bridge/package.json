@@ -1,0 +1,12 @@
+{
+  "name": "arb-scanner-local-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only HTTP bridge between ../tracker/events.jsonl and the arb-scanner Chrome extension. See ./README.md.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node state.test.js"
+  }
+}

@@ -6,6 +6,8 @@ const arbsCountEl = document.getElementById('arbs-count');
 const matchListEl = document.getElementById('match-list');
 const matchesEmptyEl = document.getElementById('matches-empty');
 const matchesCountEl = document.getElementById('matches-count');
+const bridgeBannerEl = document.getElementById('bridge-banner');
+const vpnBannerEl = document.getElementById('vpn-banner');
 
 let lastUpdateMs = null;
 
@@ -56,9 +58,18 @@ function apply(payload) {
   if (payload.stake && document.activeElement !== stakeInput) {
     stakeInput.value = payload.stake;
   }
+  applyBridgeBanner(payload.bridge);
   renderArbs(payload.arbs || []);
   renderMatches(payload.matches || []);
   tickStatus();
+}
+
+function applyBridgeBanner(bridge) {
+  const online = !!(bridge && bridge.online);
+  bridgeBannerEl.hidden = online;
+  // VPN unverified is structural per RISK_SCORING.md — show whenever the bridge has *any*
+  // status (online or offline). Hide only when there's no payload yet.
+  vpnBannerEl.hidden = !bridge;
 }
 
 function renderArbs(arbs) {
@@ -76,6 +87,8 @@ function renderMatches(matches) {
 function arbCard(item) {
   const li = document.createElement('li');
   li.className = 'arb-card';
+  const verdict = (item.risk && item.risk.verdict) || 'WAIT';
+  li.classList.add(`verdict-${verdict.toLowerCase()}`);
 
   const header = document.createElement('div');
   header.className = 'card-header';
@@ -86,11 +99,22 @@ function arbCard(item) {
   title.append(`${item.away} @ ${item.home}`);
   if (item.is_live) title.append(' ', badge('LIVE'));
 
+  const right = document.createElement('div');
+  right.className = 'card-header-right';
+
+  const verdictTag = document.createElement('span');
+  verdictTag.className = `verdict-tag verdict-tag-${verdict.toLowerCase()}`;
+  verdictTag.textContent = `[${verdict}]`;
+  if (item.risk && item.risk.bridge_status === 'offline') {
+    verdictTag.title = 'Bridge offline — limited evaluation';
+  }
+
   const margin = document.createElement('div');
   margin.className = 'margin';
   margin.textContent = `${item.arb.margin_pct.toFixed(2)}%`;
 
-  header.append(title, margin);
+  right.append(verdictTag, margin);
+  header.append(title, right);
   li.append(header);
 
   const summary = document.createElement('div');
@@ -98,12 +122,70 @@ function arbCard(item) {
   summary.textContent = `Profit $${item.stakes.realized_profit.toFixed(2)} · ROI ${item.stakes.realized_roi_pct.toFixed(2)}% on $${item.stakes.total_stake}`;
   li.append(summary);
 
-  li.append(legRow('away', item.arb.away, item.stakes.stake_away));
-  li.append(legRow('home', item.arb.home, item.stakes.stake_home));
+  li.append(legRow('away', item.arb.away, item.stakes.stake_away, verdict));
+  li.append(legRow('home', item.arb.home, item.stakes.stake_home, verdict));
+
+  if (item.risk) li.append(reasoningTrace(item.risk));
   return li;
 }
 
-function legRow(side, leg, stake) {
+function reasoningTrace(risk) {
+  const wrap = document.createElement('details');
+  wrap.className = 'reasoning';
+
+  const summary = document.createElement('summary');
+  const factorCount = (risk.legs || []).reduce((s, l) => s + (l.factors || []).length, 0);
+  summary.textContent = factorCount === 0
+    ? `Reasoning · score ${risk.pairing_score.toFixed(2)} · no factors triggered`
+    : `Reasoning · score ${risk.pairing_score.toFixed(2)} · ${factorCount} factor${factorCount === 1 ? '' : 's'}`;
+  wrap.append(summary);
+
+  if (risk.bridge_offline_reason) {
+    const offline = document.createElement('div');
+    offline.className = 'reasoning-offline';
+    offline.textContent = risk.bridge_offline_reason;
+    wrap.append(offline);
+  }
+
+  for (const leg of risk.legs || []) {
+    const legBox = document.createElement('div');
+    legBox.className = 'reasoning-leg';
+    const head = document.createElement('div');
+    head.className = 'reasoning-leg-head';
+    const mult = leg.multiplier && leg.multiplier !== 1.0
+      ? ` × ${leg.multiplier.toFixed(2)}`
+      : '';
+    head.textContent = `${leg.book}: score ${leg.score.toFixed(2)} (raw ${leg.raw_sum.toFixed(2)}${mult})${leg.hard_skip ? ' — HARD SKIP' : ''}`;
+    legBox.append(head);
+
+    if (!leg.factors || leg.factors.length === 0) {
+      const none = document.createElement('div');
+      none.className = 'reasoning-factor reasoning-none';
+      none.textContent = 'no factors triggered';
+      legBox.append(none);
+    } else {
+      for (const f of leg.factors) {
+        const row = document.createElement('div');
+        row.className = `reasoning-factor${f.hard_skip ? ' reasoning-hard' : ''}`;
+        const w = document.createElement('span');
+        w.className = 'reasoning-weight';
+        w.textContent = `+${f.weight.toFixed(2)}`;
+        const t = document.createElement('span');
+        t.className = 'reasoning-text';
+        t.textContent = f.label;
+        const src = document.createElement('span');
+        src.className = 'reasoning-src';
+        src.textContent = f.source;
+        row.append(w, t, src);
+        legBox.append(row);
+      }
+    }
+    wrap.append(legBox);
+  }
+  return wrap;
+}
+
+function legRow(side, leg, stake, verdict) {
   const row = document.createElement('div');
   row.className = `leg leg-${side}`;
 
@@ -119,14 +201,40 @@ function legRow(side, leg, stake) {
   odds.className = 'leg-odds';
   odds.textContent = leg.odds.toFixed(3);
 
-  const stakeBtn = document.createElement('button');
-  stakeBtn.className = 'leg-stake';
-  stakeBtn.type = 'button';
-  stakeBtn.textContent = `$${stake}`;
-  stakeBtn.title = 'Click to copy stake';
-  stakeBtn.addEventListener('click', () => copyStake(stakeBtn, stake));
+  // SKIP: no copy button (don't tempt the user). WAIT: behind a "show anyway" gate so the
+  // user has to opt into copying despite the warning. GO: normal copy button.
+  let cell;
+  if (verdict === 'SKIP') {
+    cell = document.createElement('span');
+    cell.className = 'leg-stake leg-stake-blocked';
+    cell.textContent = `$${stake}`;
+    cell.title = 'SKIP: stake hidden — see reasoning trace';
+  } else if (verdict === 'WAIT') {
+    cell = document.createElement('button');
+    cell.className = 'leg-stake leg-stake-gated';
+    cell.type = 'button';
+    cell.textContent = 'show $';
+    cell.title = 'WAIT: click once to reveal stake, click again to copy';
+    let revealed = false;
+    cell.addEventListener('click', () => {
+      if (!revealed) {
+        cell.textContent = `$${stake}`;
+        cell.classList.remove('leg-stake-gated');
+        revealed = true;
+      } else {
+        copyStake(cell, stake);
+      }
+    });
+  } else {
+    cell = document.createElement('button');
+    cell.className = 'leg-stake';
+    cell.type = 'button';
+    cell.textContent = `$${stake}`;
+    cell.title = 'Click to copy stake';
+    cell.addEventListener('click', () => copyStake(cell, stake));
+  }
 
-  row.append(book, team, odds, stakeBtn);
+  row.append(book, team, odds, cell);
   return row;
 }
 

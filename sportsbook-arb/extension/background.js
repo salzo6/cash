@@ -12,11 +12,18 @@
 
 import { findArb, computeStakes, DEFAULT_TOTAL_STAKE } from './lib/arb.js';
 import { BOOKS, scanWindowUrls } from './lib/books.js';
+import { scorePairing, scorePairingOffline } from './lib/risk.js';
 
 const STORAGE_KEY = 'arb_state_v1';
 const STAKE_KEY = 'stake_cad';
 const TTL_MS = 60_000;
 const PURGE_ALARM = 'purge-stale';
+
+// Phase 6 bridge — read-only HTTP server in ../local-bridge/server.js. Default port matches
+// local-bridge/server.js. Fetched on every computeAndBroadcast pass; if it's down we fall
+// back to scorePairingOffline and surface a banner in the panel.
+const BRIDGE_URL = 'http://127.0.0.1:5731/state';
+const BRIDGE_TIMEOUT_MS = 1500;
 
 chrome.runtime.onInstalled.addListener((details) => {
   console.log('[arb-scanner] extension loaded', details.reason);
@@ -59,7 +66,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'GET_STATE') {
     serialize(() => computeAndBroadcast(false)).then(
       (payload) => sendResponse(payload),
-      () => sendResponse({ type: 'ARBS_UPDATE', arbs: [], matches: [], stake: DEFAULT_TOTAL_STAKE, generated_at: Date.now() })
+      () => sendResponse({
+        type: 'ARBS_UPDATE',
+        arbs: [],
+        matches: [],
+        stake: DEFAULT_TOTAL_STAKE,
+        generated_at: Date.now(),
+        bridge: { online: false, url: BRIDGE_URL, vpn_check: 'unverified', event_count: null }
+      })
     );
     return true;
   }
@@ -152,11 +166,27 @@ async function handleOddsUpdate(msg) {
   await computeAndBroadcast(true);
 }
 
+async function fetchBridgeState() {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), BRIDGE_TIMEOUT_MS);
+    const resp = await fetch(BRIDGE_URL, { signal: ctrl.signal, cache: 'no-store' });
+    clearTimeout(t);
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch (err) {
+    // Bridge offline / not started / port mismatch — risk.js falls back to WAIT with reason.
+    return null;
+  }
+}
+
 async function computeAndBroadcast(broadcast) {
   const stored = await chrome.storage.session.get([STORAGE_KEY, STAKE_KEY]);
   const state = stored[STORAGE_KEY] || { byEventKey: {} };
   const stake = sanitizeStake(stored[STAKE_KEY]);
   const now = Date.now();
+  const bridgeState = await fetchBridgeState();
+  const bridgeOnline = bridgeState != null;
 
   let mutated = false;
   for (const key of Object.keys(state.byEventKey)) {
@@ -198,7 +228,19 @@ async function computeAndBroadcast(broadcast) {
     const arb = findArb(byBook);
     if (arb) {
       const stakes = computeStakes(arb, stake);
-      arbs.push({ ...baseRow, arb, stakes, total_stake: stake });
+      // findArb returns leg.book as the BOOKS-registry key ('betmgm'); the bridge keys its
+      // per-book state by display name ('BetMGM') because that's what events.jsonl uses.
+      // Translate before scoring so risk.js works entirely in display-name space.
+      const arbForRisk = {
+        ...arb,
+        away: { ...arb.away, book: bookDisplayName(arb.away.book) },
+        home: { ...arb.home, book: bookDisplayName(arb.home.book) }
+      };
+      const candidate = { ...baseRow, market: 'moneyline', arb: arbForRisk, stakes };
+      const risk = bridgeOnline
+        ? scorePairing(candidate, bridgeState, now)
+        : scorePairingOffline(candidate);
+      arbs.push({ ...baseRow, arb, stakes, total_stake: stake, risk, market: 'moneyline' });
     } else {
       matches.push({ ...baseRow, best_margin_pct: computeBestMargin(byBook) });
     }
@@ -209,7 +251,20 @@ async function computeAndBroadcast(broadcast) {
     (a, b) => (b.best_margin_pct ?? -Infinity) - (a.best_margin_pct ?? -Infinity)
   );
 
-  const payload = { type: 'ARBS_UPDATE', arbs, matches, stake, generated_at: now };
+  const payload = {
+    type: 'ARBS_UPDATE',
+    arbs,
+    matches,
+    stake,
+    generated_at: now,
+    bridge: {
+      online: bridgeOnline,
+      url: BRIDGE_URL,
+      generated_at_iso: bridgeState && bridgeState.generated_at_iso,
+      vpn_check: bridgeState ? bridgeState.vpn_check || 'unverified' : 'unverified',
+      event_count: bridgeState ? bridgeState.event_count : null
+    }
+  };
 
   if (broadcast) {
     chrome.runtime.sendMessage(payload).catch(() => {
@@ -255,6 +310,11 @@ function computeBestMargin(byBook) {
   if (!Number.isFinite(bestAway) || !Number.isFinite(bestHome)) return null;
   if (bestAway <= 1 || bestHome <= 1) return null;
   return (1 - (1 / bestAway + 1 / bestHome)) * 100;
+}
+
+function bookDisplayName(bookKey) {
+  const b = BOOKS[bookKey];
+  return (b && b.name) || bookKey;
 }
 
 function sanitizeStake(raw) {

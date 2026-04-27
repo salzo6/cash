@@ -26,6 +26,18 @@
     </header>
 
     <main>
+      <div id="bridge-banner" class="bridge-banner" hidden>
+        <div class="bridge-banner-title">Bridge offline</div>
+        <div class="bridge-banner-body">
+          Verdicts default to <strong>WAIT</strong> — account-age, recreational-history, and frequency checks are not running.
+          Start the bridge: <code>node sportsbook-arb/local-bridge/server.js</code>
+        </div>
+      </div>
+
+      <div id="vpn-banner" class="vpn-banner" hidden>
+        VPN check unverified — relying on user discipline (rules.md "VPN / location rules").
+      </div>
+
       <section id="arbs-section">
         <h2>Arbs <span class="count" id="arbs-count">0</span></h2>
         <ul id="arb-list"></ul>
@@ -42,7 +54,7 @@
     </main>
 
     <footer>
-      <small id="phase-tag">phase 2 / 4 / 5 — arbs live</small>
+      <small id="phase-tag">phase 6 — verdicts live</small>
     </footer>
 
     <script src="sidepanel.js" type="module"></script>
