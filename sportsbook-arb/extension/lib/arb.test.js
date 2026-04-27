@@ -67,6 +67,29 @@ console.log('test: stake split equalizes payout');
   near(s.realized_profit, 5, 'realized profit');
 }
 
+console.log('test: asymmetric rounding — Yankees/Rangers screenshot reproduction');
+{
+  // Reproduces 2026-04-27 screenshot: FanDuel Yankees 1.820 / BetMGM Rangers 2.400, $100 stake.
+  // Should expose the wide min/max spread and a meaningful rounding cost.
+  const arb = {
+    away: { book: 'FanDuel', odds: 1.820, team: 'Yankees' },
+    home: { book: 'BetMGM',  odds: 2.400, team: 'Rangers' },
+    margin_pct: 3.38
+  };
+  const s = computeStakes(arb, 100);
+  near(s.stake_away, 55, 'rounded $55 on FanDuel');
+  near(s.stake_home, 45, 'rounded $45 on BetMGM');
+  near(s.profit_if_away, 0.10, 'Yankees-win profit ≈ $0.10');
+  near(s.profit_if_home, 8.00, 'Rangers-win profit = $8.00');
+  near(s.min_profit, 0.10, 'min profit is the Yankees-win leg');
+  near(s.max_profit, 8.00, 'max profit is the Rangers-win leg');
+  near(s.ideal_profit, 3.51, 'ideal pre-rounding profit ≈ $3.51', 0.02);
+  near(s.ideal_roi_pct, 3.51, 'ideal ROI ≈ 3.51%', 0.02);
+  near(s.rounding_cost, 3.41, 'rounding cost ≈ $3.41 of profit lost', 0.02);
+  near(s.ideal_stake_away, 56.87, 'ideal FanDuel stake $56.87', 0.02);
+  near(s.ideal_stake_home, 43.13, 'ideal BetMGM stake $43.13', 0.02);
+}
+
 console.log('test: rounding loss is real but bounded');
 {
   // Asymmetric: 2.50 + 1.80

@@ -117,13 +117,18 @@ function arbCard(item) {
   header.append(title, right);
   li.append(header);
 
+  const s = item.stakes;
   const summary = document.createElement('div');
   summary.className = 'summary';
-  summary.textContent = `Profit $${item.stakes.realized_profit.toFixed(2)} · ROI ${item.stakes.realized_roi_pct.toFixed(2)}% on $${item.stakes.total_stake}`;
+  // Show worst-case → best-case profit. When min and max collapse (rare, only at exact-split
+  // stakes) drop to a single number.
+  summary.textContent = s.min_profit === s.max_profit
+    ? `+$${s.min_profit.toFixed(2)} on $${s.total_stake}`
+    : `+$${s.min_profit.toFixed(2)} → +$${s.max_profit.toFixed(2)} on $${s.total_stake}`;
   li.append(summary);
 
-  li.append(legRow('away', item.arb.away, item.stakes.stake_away, verdict));
-  li.append(legRow('home', item.arb.home, item.stakes.stake_home, verdict));
+  li.append(legRow('away', item.arb.away, item.stakes.stake_away, verdict, item.by_book));
+  li.append(legRow('home', item.arb.home, item.stakes.stake_home, verdict, item.by_book));
 
   if (item.risk) li.append(reasoningTrace(item.risk));
   return li;
@@ -185,7 +190,7 @@ function reasoningTrace(risk) {
   return wrap;
 }
 
-function legRow(side, leg, stake, verdict) {
+function legRow(side, leg, stake, verdict, byBook) {
   const row = document.createElement('div');
   row.className = `leg leg-${side}`;
 
@@ -193,13 +198,25 @@ function legRow(side, leg, stake, verdict) {
   book.className = 'leg-book';
   book.textContent = leg.book;
 
+  // Staleness: how old is this book's reading? With a 20s TTL anything >10s is suspect.
+  // Helps surface phantom arbs where one book's data lagged behind the other's.
+  const entry = byBook && byBook[leg.book];
+  if (entry && entry.received_at_ms) {
+    const ageS = Math.max(0, Math.round((Date.now() - entry.received_at_ms) / 1000));
+    const stale = document.createElement('span');
+    stale.className = 'leg-stale';
+    if (ageS > 10) stale.classList.add('leg-stale-old');
+    stale.textContent = `${ageS}s`;
+    book.append(' ', stale);
+  }
+
   const team = document.createElement('span');
   team.className = 'leg-team';
   team.textContent = leg.team;
 
   const odds = document.createElement('span');
   odds.className = 'leg-odds';
-  odds.textContent = leg.odds.toFixed(3);
+  odds.textContent = formatOdds(leg.odds, leg.odds_american);
 
   // SKIP: no copy button (don't tempt the user). WAIT: behind a "show anyway" gate so the
   // user has to opt into copying despite the warning. GO: normal copy button.
@@ -257,15 +274,14 @@ function matchRow(item) {
   const li = document.createElement('li');
   li.className = 'match-row';
 
+  const head = document.createElement('div');
+  head.className = 'match-head';
+
   const name = document.createElement('span');
   name.className = 'match-name';
   if (item.league) name.append(leagueTag(item.league), ' ');
   name.append(`${item.away} @ ${item.home}`);
   if (item.is_live) name.append(' ', badge('LIVE', 'small'));
-
-  const books = document.createElement('span');
-  books.className = 'match-books';
-  books.textContent = item.books.join(' + ');
 
   const margin = document.createElement('span');
   margin.className = 'match-margin';
@@ -277,8 +293,59 @@ function matchRow(item) {
     if (pct < 0) margin.classList.add('neg');
   }
 
-  li.append(name, books, margin);
+  head.append(name, margin);
+  li.append(head);
+
+  // Per-team odds across all books — diagnostic visibility so a stale or wrong reading on one
+  // book is obvious. American format is shown in brackets when the source emitted it (FanDuel),
+  // so a panel value mismatching the page is a smoking gun for a selector bug.
+  if (item.by_book) {
+    li.append(matchTeamOdds(item.by_book, 'away', item.away));
+    li.append(matchTeamOdds(item.by_book, 'home', item.home));
+  }
+
   return li;
+}
+
+function matchTeamOdds(byBook, sideKey, displayName) {
+  const row = document.createElement('div');
+  row.className = 'match-team-odds';
+
+  const teamLabel = document.createElement('span');
+  teamLabel.className = 'match-team-label';
+  teamLabel.textContent = displayName || '';
+  row.append(teamLabel);
+
+  // Stable book ordering — sort alphabetically so output is deterministic across renders.
+  const entries = Object.entries(byBook).sort(([a], [b]) => a.localeCompare(b));
+  for (const [bookKey, e] of entries) {
+    const dec = sideKey === 'away' ? e.away_odds : e.home_odds;
+    const am = sideKey === 'away' ? e.away_odds_american : e.home_odds_american;
+    if (dec == null) continue;
+
+    const cell = document.createElement('span');
+    cell.className = 'match-book-cell';
+
+    const lbl = document.createElement('span');
+    lbl.className = 'match-book-label';
+    lbl.textContent = bookKey;
+
+    const val = document.createElement('span');
+    val.className = 'match-book-value';
+    val.textContent = formatOdds(dec, am);
+
+    cell.append(lbl, ' ', val);
+    row.append(cell);
+  }
+
+  return row;
+}
+
+function formatOdds(decimal, american) {
+  const dec = decimal.toFixed(3);
+  if (american == null || !Number.isFinite(american)) return dec;
+  const sign = american > 0 ? '+' : '';
+  return `${dec} (${sign}${american})`;
 }
 
 function badge(text, mod) {

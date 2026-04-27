@@ -16,7 +16,12 @@ import { scorePairing, scorePairingOffline } from './lib/risk.js';
 
 const STORAGE_KEY = 'arb_state_v1';
 const STAKE_KEY = 'stake_cad';
-const TTL_MS = 60_000;
+// 20s TTL — was 60s, but a 60s window let phantom arbs survive for a full minute when one
+// book's data went stale (e.g. content script briefly stopped polling that game). Content
+// scripts poll every 5s, so 20s = 4 missed polls before the entry is considered dead. Short
+// enough to clear phantoms quickly; long enough to absorb one or two missed polls during a
+// page transition without flapping.
+const TTL_MS = 20_000;
 const PURGE_ALARM = 'purge-stale';
 
 // Phase 6 bridge — read-only HTTP server in ../local-bridge/server.js. Default port matches

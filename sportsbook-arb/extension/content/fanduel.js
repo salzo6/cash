@@ -46,7 +46,39 @@
       const event = readGame(container, league, slug, eventId);
       if (event) out.push(event);
     }
-    return out;
+    return dedupeByClosestStart(out);
+  }
+
+  // FanDuel renders multiple game-days on a single scroll (e.g. today + tomorrow + day-after
+  // of an MLB series). Same-teams matchups across different days share the canonical
+  // event_key after `-@-` → `__` collapse, because canonicalization intentionally drops the
+  // book event ID. Without dedup, tomorrow's odds overwrite today's in storage and produce
+  // phantom arbs — every MLB game we observed on 2026-04-27 was hitting this. Pick the event
+  // whose start_time_iso is closest to now (in-progress and upcoming both beat far-future).
+  //
+  // ALGORITHM IS CANONICAL IN ../lib/event_dedupe.js — content scripts can't import in MV3,
+  // so this is a verbatim copy. If you change the algorithm, update both files. The contract
+  // is locked by ../lib/event_dedupe.test.js.
+  function dedupeByClosestStart(events, nowMs = Date.now()) {
+    const byKey = new Map();
+    for (const ev of events) {
+      const existing = byKey.get(ev.event_key);
+      if (!existing) {
+        byKey.set(ev.event_key, ev);
+        continue;
+      }
+      if (closenessScore(ev, nowMs) < closenessScore(existing, nowMs)) {
+        byKey.set(ev.event_key, ev);
+      }
+    }
+    return [...byKey.values()];
+  }
+
+  function closenessScore(ev, nowMs) {
+    if (!ev.start_time_iso) return Infinity;     // unknown time = lowest priority
+    const t = Date.parse(ev.start_time_iso);
+    if (!Number.isFinite(t)) return Infinity;
+    return Math.abs(t - nowMs);
   }
 
   function readGame(gameEl, league, slug, eventId) {
@@ -71,6 +103,11 @@
       home: home.team,
       away_odds: awayOdds,
       home_odds: homeOdds,
+      // Preserve the raw American value the page rendered, so the panel can show
+      // "1.595 (-168)" and we can spot selector bugs at a glance (when the page shows
+      // -168 but we captured -118, the bracket value won't match the visible page).
+      away_odds_american: away.odds,
+      home_odds_american: home.odds,
       event_key: canonicalEventKey(slug),
       event_id_book: eventId,
       start_time_iso,

@@ -166,6 +166,85 @@ Phases 2, 4, and 5 of the original plan ship together because they're a single u
 
 ---
 
+## FanDuel multi-day event collision — fixed (2026-04-27)
+
+The phantom Yankees @ Rangers arb root-caused. **Every** FanDuel MLB reading was tomorrow's odds, not today's, because FanDuel renders multiple game-days on a single scroll and `canonicalEventKey()` collapses cross-day same-teams matchups to one key.
+
+### How the bug was diagnosed
+
+The freshly-shipped American-odds-in-brackets display made the pattern instantly visible:
+
+| Game | Page (today) | Page (tomorrow) | Panel read |
+|---|---|---|---|
+| NYY @ TEX | -168 / +142 | **-118** / +100 | -118 ✓ tomorrow |
+| LAA @ CHW | -116 / -102 | **-136** / **+116** | -136 / +116 ✓ tomorrow |
+| TB @ CLE | -136 / +116 | **-130** / **+110** | -130 / +110 ✓ tomorrow |
+| CHC @ SD | -104 / -112 | **-118** / — | -118 ✓ tomorrow |
+| BOS @ TOR | -138 / +118 | n/a | -120 (matches tomorrow pattern) |
+
+100% consistency across 5 matched events made the root cause obvious. FanDuel emits two events for `New-York-Yankees-@-Texas-Rangers` (today + tomorrow). After `canonicalEventKey()` strips the book event ID and collapses `-@-` → `__`, both keys are `new-york-yankees__texas-rangers`. The second one wins the overwrite in `chrome.storage.session.byEventKey`. BetMGM doesn't have this problem because its MLB page only renders today's games, so its single per-game emission keys cleanly.
+
+### Shipped
+
+- `content/fanduel.js` `readEvents()` now passes its output through `dedupeByClosestStart()`. When multiple events collapse to the same canonical event_key, the dedup keeps the one whose `start_time_iso` is closest to `Date.now()` — in-progress and upcoming both beat far-future. FanDuel already emits `start_time_iso` per event, so no DOM changes were needed. Events without a time (unlikely on FanDuel) score `Infinity` (lowest priority).
+
+### Diagnostic visibility
+
+Two earlier fixes from this session enabled the diagnosis:
+
+- **American odds in brackets** — `1.847 (-118)` made it instantly clear the script wasn't reading what was on the page (-168). Without this, the bug was indistinguishable from a freshness issue.
+- **Per-team odds in matched events** — exposed the same bug across 5 different games, proving it wasn't a one-off and giving the cross-reference data to identify the root cause.
+
+### Known follow-ups
+
+- BetMGM also strips event ID from `event_key` and would have the same collision bug if BetMGM's MLB page started rendering multi-day games. Audit `content/betmgm.js`'s canonical-event-key logic + add the same dedup as defensive measure when start times become available there. (BetMGM doesn't currently emit `start_time_iso` — see `CHANGELOG.md` Phase 3 entry. Adding it requires capturing fresh BetMGM DOM samples.)
+- Long-term, the right fix is to include the date portion of `start_time_iso` directly in `event_key` so cross-day same-teams games NEVER collide. Blocked on BetMGM emitting start times — without symmetry, including date in FanDuel-only would break cross-book matching for *today's* games too.
+
+---
+
+## Freshness — TTL tightened, per-leg staleness indicator (2026-04-27)
+
+Phantom arbs survive when one book's stored data goes stale while the other refreshes. Tightening the cache TTL and surfacing staleness per leg.
+
+### Shipped
+
+- `background.js` `TTL_MS` reduced from `60_000` → `20_000`. Content scripts poll every 5s, so 20s = 4 missed polls before an entry is considered dead. Short enough to clear phantoms quickly; long enough to absorb one or two missed polls during a page transition without flapping. Stale entries now expire ~3× faster.
+- `sidepanel/sidepanel.js` per-leg staleness indicator: small "Ns" tag next to each book name in the leg row. Reads `received_at_ms` from `item.by_book[leg.book]` and shows seconds since the last refresh from that book. Goes gold + bold when age >10s — visual cue that this leg's data is approaching its 20s expiry and may be the cause of a suspect margin.
+
+### Not yet fixed (queued)
+
+The deeper root cause — content scripts that include the wrong DOM element, or that go silent on a page transition — is unaddressed. The TTL fix is mitigation, not cure. Two follow-ups still pending:
+
+- Per-book heartbeat tracking: if a book's content script hasn't sent ANY batch in N seconds (regardless of league), expire all of that book's entries. Catches the "tab navigated away" case faster than the per-event TTL.
+- `stale_odds_suspect` factor in `risk.js`: fire when one leg is significantly older than the other or when implied total whipsaws between polls. Catches phantom arbs at the verdict layer even if the storage-side fix is imperfect.
+
+---
+
+## Profit display: worst / best / ideal (2026-04-27)
+
+Caught during a real-world phantom-arb observation: panel showed "Profit $0.08 · ROI 0.08% on $100" for a Yankees @ Rangers MLB arb at 1.820 / 2.400. The $0.08 was technically correct (worst-case min profit), but the asymmetry was hidden — the Rangers-win outcome would have paid +$8.00, and the ideal pre-rounding split would have been a guaranteed +$3.51. At small total stakes ($100 here), $5 stake rounding can warp one outcome to "barely above zero" and the other to "8× higher" — the old summary line surfaced only the worst case.
+
+### Shipped
+
+- `lib/arb.js` `computeStakes()` now returns `profit_if_away`, `profit_if_home`, `min_profit`, `max_profit`, `min_roi_pct`, `max_roi_pct`, `ideal_profit`, `ideal_roi_pct`, `rounding_cost`. `realized_profit` / `realized_roi_pct` retained as backwards-compat aliases for `min_profit` / `min_roi_pct`. Per-outcome P&L = winning leg's payout − total stake (the losing leg's stake is sunk).
+- `sidepanel/sidepanel.js` arb summary now shows `+$min → +$max · ideal +$X (X.XX%) on $N` so the spread is visible. When min == max (typical at $1000+ stakes) the range collapses to a single number. A second muted-gold line surfaces `$5 rounding cost: −$X.XX vs ideal split $A/$B` when the rounding cost is ≥$0.50 — visual cue that bumping stake size would close the gap.
+- `lib/arb.test.js` adds the Yankees/Rangers screenshot as a regression fixture: 1.820/2.400 at $100 → $55/$45 rounded, $0.10/$8.00 per-outcome, $3.51 ideal, $3.41 rounding cost. All numbers locked.
+
+### Why it matters
+
+At $100 total stake, $5 rounding can bleed 90%+ of an arb's value. The display now makes that obvious instead of presenting min profit as if it were "the" profit. Practical takeaway baked into the UI: at small stakes the rounding cost is the bigger story; at $1000+ the cost falls below 0.1% of stake and the range visibly tightens.
+
+### Related stale-odds finding (not yet fixed)
+
+The screenshot that surfaced this also exposed a real stale-data bug: FanDuel's stored Yankees odds were 1.820 (decimal) while the actual FanDuel page was showing -168 (1.595). The arb was a phantom — at real odds the implied total is 1.044 (anti-arb, book vig). Two fixes pending:
+
+- **Per-book-per-league freshness in `background.js`**: a missing-from-batch event should expire faster than the 60s TTL. Today, an empty batch (e.g. tab momentarily off the MLB page) leaves stale entries for the full TTL window.
+- **`stale_odds_suspect` factor in `risk.js`**: fire when one book's reading is significantly older than the other's, or when implied total whipsaws between polls. Catches this class even if the storage-side fix is imperfect.
+
+The Phase 6 risk scorer correctly returned SKIP on this phantom — but only because the user's accounts are still hard-blocked on age/recreational/float-cap, not because freshness was detected. If the accounts were warmed up, the same phantom would have come back as `GO`.
+
+---
+
 ## Phase 6 — Risk scoring + tracker bridge (2026-04-26)
 
 Every arb in the side panel now carries a `[GO]` / `[WAIT]` / `[SKIP]` verdict per pairing with an expandable reasoning trace, evaluated against the full 18-factor contract in [`RISK_SCORING.md`](./RISK_SCORING.md).

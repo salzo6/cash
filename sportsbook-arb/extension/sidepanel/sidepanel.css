@@ -372,9 +372,10 @@ main section h2 {
   font-variant-numeric: tabular-nums;
 }
 
+
 .leg {
   display: grid;
-  grid-template-columns: 70px 1fr 50px 60px;
+  grid-template-columns: 80px 1fr auto 60px;
   gap: 8px;
   align-items: center;
   padding: 4px 6px;
@@ -389,6 +390,22 @@ main section h2 {
   color: var(--accent);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.leg-stale {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.leg-stale-old {
+  color: var(--gold);
+  font-weight: 700;
 }
 
 .leg-team {
@@ -435,10 +452,9 @@ main section h2 {
 }
 
 .match-row {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 10px;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   padding: 6px 8px;
   background: var(--bg-2);
   border: 1px solid var(--border);
@@ -446,17 +462,17 @@ main section h2 {
   font-size: 12px;
 }
 
+.match-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
 .match-name {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.match-books {
-  color: var(--muted);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .match-margin {
@@ -468,6 +484,42 @@ main section h2 {
 .match-margin.neg {
   color: var(--muted);
   font-weight: 400;
+}
+
+.match-team-odds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 10.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  padding-left: 4px;
+}
+
+.match-team-label {
+  color: var(--fg);
+  font-weight: 600;
+  flex-shrink: 0;
+  max-width: 130px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.match-book-cell {
+  white-space: nowrap;
+}
+
+.match-book-label {
+  color: var(--accent);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 10px;
+}
+
+.match-book-value {
+  color: var(--fg);
 }
 
 footer {
