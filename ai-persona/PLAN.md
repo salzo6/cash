@@ -4,70 +4,110 @@ Each phase has an **exit criterion**. Don't advance until it's met — premature
 
 ---
 
+## Content priority order (universal across all personas)
+
+This priority order is **locked and applies to every persona** — Maya, and all future personas. Architecture and tooling choices flow from it.
+
+1. **Videos** — non-negotiable. If a pipeline can't produce videos, it's a dealbreaker. Forms wanted: image-to-video clips, character replacement in existing videos (e.g., a TikTok dance with the persona as the dancer), generated-from-scratch motion. Video drives engagement way more than images.
+2. **Semi-provocative content** — promotes the persona on IG/TikTok. Drives free reach. Both videos and images, slight preference for videos for IG/TikTok engagement.
+3. **Full NSFW** — primary revenue on Fanvue/premium platforms. Both videos and images.
+4. **Vlog/everyday videos** — for sponsorship deals down the road. Lower priority initially.
+
+**Core funnel:** social media attention → conversion to paid premium content.
+
+---
+
+## Architecture decision: SDXL primary (not Flux)
+
+Driven by the priority order above. Reasoning:
+
+- **NSFW ecosystem maturity** — SDXL has Lustify, BigASP, Pony Realism, and dozens of NSFW LoRAs. Flux NSFW exists but is younger and less varied.
+- **Dual-base flexibility** — same SDXL persona LoRA stacks with multiple bases. **Juggernaut XL or RealVisXL** for tier-2 semi-provocative (these obey "be modest" prompts). **Lustify or Pony Realism** for tier-3 full NSFW. Flux can't do this dual-base trick.
+- **Video doesn't care** — image-to-video models (HunyuanVideo, Wan 2.2) work the same regardless of whether the input frame came from SDXL or Flux. Flux's image quality edge doesn't translate to a video edge.
+- **License** — SDXL bases are permissively licensed (commercial OK). Flux.1-dev is non-commercial only by license terms; commercial use is technically restricted.
+- **Cost & speed** — SDXL training is ~3× faster and ~3× cheaper than Flux. SDXL inference is ~3× faster, which matters for daily content batches.
+
+**A Flux LoRA can be added later** for the same persona using the same reference images and captions. Reference data is architecture-agnostic. But SDXL is Day 1.
+
+---
+
 ## Phase 1 — Local prototype (free, current Mac)
 
 **Goal:** decide if the creative process clicks before spending anything.
 
-- Install Draw Things (App Store, free, Apple Silicon native)
-- Download 1–2 uncensored SDXL bases from Civitai (see `SETUP.md`)
-- Generate 100+ exploratory images, varying prompts/seeds, until a face/aesthetic emerges that you'd actually want to run with
-- Lock in a seed + prompt formula that reliably produces "the same person" within Draw Things' constraints (consistency will be imperfect — Phase 2 fixes this)
+- Install Draw Things on Mac (App Store, free, Apple Silicon native)
+- Use the built-in catalog (skip Civitai gates) — Juggernaut XL v9 8-bit is the working baseline
+- Generate 100+ exploratory images, varying prompts/seeds, until a face/aesthetic emerges that's worth running with
+- Lock in a seed + identity-token prompt formula that produces "the same person" across variations (consistency will be ~70-85% on locked seed alone — Phase 2 fixes this permanently)
 - Copy `personas/_template/` → `personas/<name>/`, fill out `persona.md` (identity card) and `prompts.md` (locked tokens)
-- Save the best 30–50 base shots to `personas/<name>/reference/`
+- Save the best 30+ keepers to `personas/<name>/reference/`, sorted into `core/`, `standard/`, `variation/` subfolders
 
-**Exit criterion:** one filled-out persona folder with 30+ reference shots and a written identity card. You either feel "yeah, I'd post this" or "this isn't for me" — both are valid outcomes.
+**Exit criterion:** one filled-out persona folder with 30+ ruthlessly-consistent reference shots. You either feel "yeah, I'd post this" or "this isn't for me" — both are valid outcomes.
 
 **Cost:** $0. **Time:** a few evenings.
 
-### Phase 1 status (as of 2026-05-04)
+### Phase 1 status (Maya, as of 2026-05-05) ✅
 
-**Working:**
-- Draw Things installed on M1 Pro 16GB Mac
-- Base model: **Juggernaut XL v9 (8-bit)** loaded — ~30–60 sec/image
-- LoRA: **GonzaLomo_Amateur (SDXL Base, 217 MB)** loaded at 60–70% weight
-- Generation pipeline functional end-to-end
+- 33 keepers organized: 5 core / 21 standard / 7 variation / 1 culled
+- Identity locked: `mayacole_persona` trigger word, seed `1784676583`, identity tokens captured in `personas/maya/prompts.md`
+- All 33 caption sidecars (`.txt`) written for Phase 2 LoRA training
+- Original SDXL generation prompts archived in `personas/maya/reference/PHASE1_PROMPTS.md`
 
-**Stuck on:** output quality. Generated images still read as "AI-like" despite multiple prompt iterations + LoRA. Specific failure modes seen: (1) too-polished "Instagram model" baseline that prompt engineering only partially overcomes; (2) when pushed harder toward amateur ("ugly", "average", "lowres" tokens), faces become asymmetric/distorted ("looks disabled") and skin gets painted-on; (3) trigger tokens like `lowres` and `webcam photo` literally degrade output rather than stylize it.
-
-**Highest-leverage next moves to try (in order):**
-1. **Different base model** — RealVisXL v4 (also in Draw Things catalog) has less "polished AI" bias than Juggernaut. Same workflow, just swap the model.
-2. **img2img from a real reference photo** — feed the model an actual Pinterest/scraped phone selfie at low denoise strength (0.4–0.5). Forces the model toward the source's amateur quality instead of generating from scratch.
-3. **ControlNet (pose/face reference)** — lock the composition to a real reference, let the model fill in the persona. Requires installing a ControlNet model in Draw Things.
-4. **Different LoRA** — try one trained specifically on Instagram selfies or OnlyFans-style shots (search Civitai SDXL LoRAs filtered to "selfie" or "amateur" with example outputs that match target aesthetic).
-5. **Resolve Civitai NSFW gate** — open a support ticket re: missing "Show Mature Content" toggle in account settings; unlock access to Lustify-tier models which have a much less "AI-pretty" baseline.
-6. **Skip ahead to Phase 2** — accept that local SDXL on M1 Pro has a quality ceiling, and that RunPod + Flux + custom LoRA will solve this anyway.
-
-**Open question for next session:** which of those six to attempt first.
+**Lessons learned (apply to future personas):**
+- Don't bother fighting Civitai's NSFW gate for checkpoints — Draw Things' built-in catalog is faster
+- LoRA weights above 70% with stacked trigger tokens cause melted faces — keep weight at 50-60%
+- `(token:1.2)` attention syntax doesn't parse cleanly in Draw Things — use plain tokens
+- "Lowres", "webcam photo", "grainy" tokens degrade output rather than stylize it — avoid
+- Img2img source must match canvas aspect ratio or output is bizarre superimposition — keep aspect locked
+- Captions for LoRA training should describe what *varies* (clothing, setting, pose, lighting), not constants (hair, eye color, freckles) — the model learns constants from the trigger word + visual data
 
 ---
 
-## Phase 2 — Cloud LoRA training (RunPod)
+## Phase 2 — Cloud LoRA training (RunPod, SDXL)
 
-**Goal:** consistent face across any new prompt.
+**Goal:** consistent face across any new prompt, on any compatible SDXL base.
 
-- Spin up a RunPod ComfyUI template on an RTX 4090 (~$0.40/hr)
-- Train a Flux LoRA on the reference shots from Phase 1 (Kohya / AI-Toolkit, ~1–3 hr training)
+- Spin up a RunPod **Community Cloud RTX 4090** (~$0.34-0.44/hr — spot pricing sometimes $0.20/hr)
+- Use the **AI-Toolkit** template (preferred over Kohya — simpler UI, modern defaults)
+- Use a **Network Volume** (~$0.07/GB/mo) so base models persist between sessions
+- Train an **SDXL LoRA** on the Phase 1 reference shots (~30-60 min on a 4090, captions already prepared from Phase 1)
 - Save the `.safetensors` to `personas/<name>/lora/`
-- Validate: generate 20 new images with the LoRA active. Face should be unmistakably the same person across angles/lighting/outfits.
+- **Validation matrix:** generate 20 new images with the LoRA active across **three different SDXL bases**:
+  - **Juggernaut XL** → confirms tier-2 semi-provocative + SFW work
+  - **Lustify** (or Pony Realism if Lustify gated) → confirms tier-3 full NSFW works
+  - **RealVisXL** → backup option for SFW
 
-**Exit criterion:** the LoRA passes a "blind test" — show the 20 outputs alongside the reference shots, the face is recognizably one person.
+**Exit criterion:** the LoRA passes a "blind test" — across all three bases, the face is recognizably one person.
 
-**Cost:** ~$5–15. **Time:** a weekend.
+**Cost:** ~$5-15. **Time:** a Saturday afternoon (4-6 hours including learning curve on first persona; ~2 hours for subsequent ones).
 
 ---
 
-## Phase 3 — Video pipeline
+## Phase 3 — Video pipeline (RunPod)
 
-**Goal:** turn still images into 5–10 second clips for Reels / TikTok.
+**Goal:** produce all 4 content tiers as video, not just images. This is the unlock for the priority-order's #1 requirement.
 
-- On the same RunPod box, install Wan 2.1 or HunyuanVideo (image-to-video)
-- Confirm the LoRA carries into the video model (or train an equivalent)
-- Optional: add LivePortrait for talking-head clips, ElevenLabs for voice
-- Produce 5–10 test clips of the persona
+Two parallel video tools, depending on use case:
 
-**Exit criterion:** a 30-second IG Reel is producible end-to-end (image → video → cut → caption) in under 1 hour of human time.
+### 3a — Image-to-video (general clips, dance replacement)
 
-**Cost:** ~$10–30. **Time:** a weekend.
+- Generate persona reference image using the SDXL LoRA + appropriate base
+- Feed to **Wan 2.2 I2V** (best general consistency in 2026) or **HunyuanVideo-I2V** (especially good at face holding)
+- Output: 2-10 second clips
+- **For "replace person in TikTok dance" use case:** feed reference image + driving motion video → persona doing those moves
+- **Hardware:** RunPod 4090 sufficient for Wan 2.2 / HunyuanVideo-1.5 (lightweight 8.3B variant)
+
+### 3b — Avatar/talking-head video (vlogs, lip-synced content)
+
+- **HunyuanVideo-Avatar** — specifically designed for character consistency from a reference image
+- Pair with **ElevenLabs** voice → lip-synced talking head clips
+- **Hardware:** needs RunPod **H100 (40GB+)** at ~$2-3/hr for production quality. H200 SXM5 for longer clips/higher resolution.
+
+**Exit criterion:** can produce all 4 content tiers as video, end-to-end (image → video → cut → caption) in under 1 hour of human time per clip.
+
+**Cost:** ~$15-30 for first session (more with H100 time). Per-clip cost ongoing: $5-10 for quality video.
+
+**Reality check:** video AI in 2026 is meaningfully harder than images. Plan for ~50% reject rate on first 5-10 clips. By video #20, workflow is dialed in. Long-form videos (>10 sec) require stitching — accept slight consistency drift between stitched segments.
 
 ---
 
@@ -77,12 +117,13 @@ Each phase has an **exit criterion**. Don't advance until it's met — premature
 
 - Create the IG account (matches `persona.md`'s declared handle)
 - Post daily for 30 days; log every post to `personas/<name>/posts.jsonl` (timestamp, platform, caption, asset path, performance snapshot at +24h and +7d)
+- **Per priority order, video > images for IG content** — favor reels/short clips over still posts where production allows
 - Disclosure decision: explicit "AI Model" in bio is safer (lower ban risk) but tanks engagement; undisclosed is more lucrative but accept burner-account churn. Document the choice in `persona.md`.
 - Track: follower growth rate, engagement rate, DM volume, click-through to bio link
 
 **Exit criterion:** 30 days of consistent posting + a defensible answer to "is this growing?" (e.g., 500+ followers and >3% engagement, or a clear reason to pivot the persona).
 
-**Cost:** $20–50 (compute for content). **Time:** ~4 hr/week of human time once the pipeline is set.
+**Cost:** $50-100 (compute for daily content, more if video-heavy). **Time:** ~4-6 hr/week of human time once the pipeline is set.
 
 ---
 
@@ -90,29 +131,34 @@ Each phase has an **exit criterion**. Don't advance until it's met — premature
 
 **Goal:** convert IG attention into revenue.
 
-- Set up Fanvue (or the current best AI-friendly paid platform — re-research at this stage; the landscape shifts)
+- Set up Fanvue (or current best AI-friendly paid platform — re-research at this stage; the landscape shifts)
 - Add bio link / Linktree on IG → paid platform
-- Define tiered content (free IG = teaser, paid = exclusive)
+- Define tiered content:
+  - **Free IG/TikTok teaser:** tier-2 semi-provocative video + image
+  - **Paid Fanvue subscription:** tier-3 full NSFW image + video, plus exclusive content
+  - **Paid custom requests:** generate to fan specifications, charge per piece
 - First payouts within 60 days of funnel launch is realistic if Phase 4 cleared its exit criterion
 
 **Exit criterion:** $500+ first month from a single persona. If no, problem is upstream (persona/niche/funnel) — fix before scaling.
 
 ---
 
-## Phase 6 — Scale to 3–4 personas
+## Phase 6 — Scale to 3-4 personas
 
 **Goal:** parallelize without proportional time cost.
 
 This is what the `personas/` folder structure is built for. Each persona is a self-contained unit; the pipeline runs once, content distributes to all.
 
-- Differentiate personas by **niche**, not just face — same niche = same audience = cannibalization. Examples: fitness, gamer, alt/goth, "girl next door", cosplay.
-- Batch production: one RunPod session generates a week of content for all active personas (~3–5 hr)
-- Stagger launch dates by 2–4 weeks so each persona gets focused attention during its ramp
+- **Differentiate personas by niche, not just face** — same niche = same audience = cannibalization. Examples: fitness, gamer, alt/goth, "girl next door", cosplay
+- **Same priority order applies to every persona** (videos > semi-provocative > NSFW > vlogs)
+- Each persona gets its own SDXL LoRA but uses the same shared base models (Juggernaut, Lustify) and video pipeline — efficient resource use
+- Batch production: one RunPod session generates a week of content for all active personas (~3-5 hr)
+- Stagger launch dates by 2-4 weeks so each persona gets focused attention during its ramp
 - Posting can be scheduled (Later, Buffer, Metricool) — not real-time
 
-**Exit criterion:** 3–4 active personas, combined revenue ≥ 3× single-persona Phase 5 baseline, and the human time per week stays under ~10 hours.
+**Exit criterion:** 3-4 active personas, combined revenue ≥ 3× single-persona Phase 5 baseline, and the human time per week stays under ~10 hours.
 
-**Cost:** ~$40–100/mo compute at this scale.
+**Cost:** ~$80-200/mo compute at this scale (more than original estimate due to video being prioritized).
 
 ---
 
@@ -122,14 +168,31 @@ This is what the `personas/` folder structure is built for. Each persona is a se
 |---|---|
 | **Platform bans** (IG mass-bans low-effort AI accounts) | Disclosure decision per persona; treat each account as eventually-disposable, keep all content + DMs backed up so a banned account can be relaunched fast |
 | **Saturation** — thousands of these exist | Differentiator is niche + lore + posting cadence, not the tech; spend Phase 1 time on persona concept, not just the face |
-| **Monetization timing** — first $ is 2–4 months out | Phase 4 exit criterion is the gate; don't sink into Phase 5 if growth signals aren't there |
+| **Monetization timing** — first $ is 2-4 months out | Phase 4 exit criterion is the gate; don't sink into Phase 5 if growth signals aren't there |
 | **Burnout** — daily posting is real work | Phase 6's batch pipeline is the only sustainable path; if Phase 4 feels grindy with one account, four will not be better |
+| **Video quality ceiling** — 2026 video AI still produces obvious failures | Budget extra cloud time for retries; favor short clips (2-5 sec) over long; use HunyuanVideo-Avatar for face-critical work |
 | **Legal** — synthetic media + adult content | Stay clear of: real-person likeness (deepfake liability), anything resembling minors (criminal), undisclosed paid promo (FTC). Beyond that, AI personas + adult content is legal in Canada and on Fanvue. |
 
 ---
 
 ## What this plan does *not* commit to
 
-- A specific persona concept — that's a Phase 1 output
+- A specific persona concept — that's a Phase 1 output (per-persona)
 - A specific paid platform — Fanvue is current best guess, re-evaluate at Phase 5
-- Hardware purchase — Phase 1 is free, RunPod covers Phase 2–3, only buy a GPU if Phase 5 clears and monthly compute > GPU amortization
+- Hardware purchase — Phase 1 is free, RunPod covers Phase 2-3, only buy a GPU if Phase 5 clears and monthly compute > GPU amortization
+- Flux as primary — SDXL is locked for Day 1; Flux can be added per-persona later as a quality upgrade for SFW premium content if revenue justifies
+
+---
+
+## Reference: model stack quick lookup
+
+For when you forget which model does what:
+
+| Need | Model | Where it runs |
+|---|---|---|
+| Train persona LoRA | AI-Toolkit (SDXL preset) | RunPod 4090 |
+| Generate semi-provocative images | persona LoRA + **Juggernaut XL** or **RealVisXL** | RunPod 4090 |
+| Generate full NSFW images | persona LoRA + **Lustify** or **Pony Realism** | RunPod 4090 |
+| Image-to-video clips | **Wan 2.2 I2V** or **HunyuanVideo-I2V** | RunPod 4090 |
+| Talking head / vlog video | **HunyuanVideo-Avatar** + ElevenLabs voice | RunPod H100 |
+| Replace person in real video | **HunyuanVideo-Avatar** with motion-driving input | RunPod H100 |

@@ -47,7 +47,8 @@ Per-persona logs (`posts.jsonl`) mirror the `sportsbook-arb/tracker/events.jsonl
 
 | Pillar | Status |
 |---|---|
-| SETUP (local) | 🟡 Draw Things installed; Juggernaut XL v9 + GonzaLomo_Amateur LoRA loaded; output quality blocker (see `PLAN.md` Phase 1 status) |
-| SETUP (cloud) | ⏳ Not started — RunPod stub in `SETUP.md` |
-| Personas | ⏳ Template only; no live persona yet |
+| SETUP (local Mac, Phase 1) | ✅ Complete — Draw Things + Juggernaut XL v9 8-bit baseline working |
+| SETUP (cloud, Phase 2-3) | ⏳ Next — RunPod + AI-Toolkit + SDXL training; see `SETUP.md` Stage 2 |
+| Architecture decision | ✅ SDXL primary (not Flux) — driven by content priority order; see `PLAN.md` |
+| Personas | 🟡 Maya: Phase 1 ✅ (33 reference shots + captions ready), Phase 2 next |
 | First IG launch | ⏳ Phase 4 (see `PLAN.md`) |

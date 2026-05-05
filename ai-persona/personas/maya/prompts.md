@@ -24,11 +24,11 @@ amateur photo, photorealism, photorealistic
 
 ---
 
-## LoRA trigger (always last token)
+## LoRA trigger
 
-```
-gonzalomo-amateur
-```
+**Phase 2 (custom Maya LoRA):** `mayacole_persona` — the unique token the trained LoRA will respond to. Goes at the **start** of every Flux prompt once the LoRA is trained.
+
+**Phase 1 (legacy, base model only):** `gonzalomo-amateur` — included in original generation prompts but had no effect (the LoRA wasn't actually loaded). Inert text. Drop from any future prompts.
 
 ---
 

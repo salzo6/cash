@@ -6,14 +6,17 @@ The stack runs in two stages. Stage 1 is your current Mac (free, prototyping). S
 
 ## Hardware reality check
 
-| | Your machine (M1 Pro 16GB) | Stage 2 target (RunPod 4090 24GB) |
-|---|---|---|
-| SDXL image (1024px) | 30–90 sec | ~3 sec |
-| Flux.1-dev image | 3–5 min if it fits | ~10 sec |
-| Train a Flux LoRA | not viable | 1–3 hours |
-| Wan / Hunyuan video | no Mac support | 2–5 min per clip |
+| | Your Mac (M1 Pro 16GB) | RunPod 4090 24GB | RunPod H100 80GB |
+|---|---|---|---|
+| SDXL image (1024px) | 30–90 sec | ~3 sec | ~2 sec |
+| Flux.1-dev image | 3–5 min if it fits | ~10 sec | ~5 sec |
+| **Train SDXL LoRA** ⭐ | not viable | **30–60 min** | 20 min |
+| Train Flux LoRA | not viable | 1–3 hours | 1 hour |
+| Wan 2.2 / HunyuanVideo I2V clip | not viable | 2–5 min | 1–2 min |
+| HunyuanVideo-Avatar clip | not viable | OOM/marginal | 3–8 min |
+| Hourly cost | n/a | $0.34–0.44 | $2–3 |
 
-The Mac is **fine for SDXL prototyping** (Phase 1 in `PLAN.md`) and nothing beyond.
+The Mac is **fine for Phase 1 SDXL prototyping** and nothing beyond. From Phase 2 onward, the work moves to RunPod.
 
 ---
 
@@ -55,30 +58,63 @@ Consistency on Mac will be ~70–80% — some shots drift. That's fine; the poin
 
 ## Stage 2 — Cloud (Phase 2 onward)
 
-*Stub — fill in when Phase 1 exits.*
+The architectural decision for cloud work: **SDXL primary, not Flux.** Driven by content priorities (videos > semi-provocative > NSFW > vlogs) — see `PLAN.md` for full reasoning. Bottom line: SDXL has the mature NSFW ecosystem (Lustify, Pony Realism, BigASP), and the same persona LoRA stacks with multiple SDXL bases for different content tiers.
 
 ### Provider: RunPod
 
 - Pay-as-you-go, no commitment. Spin up → batch produce → spin down.
-- Use a **Community Cloud RTX 4090** (~$0.34–0.44/hr) over Secure Cloud unless you need persistence between sessions.
-- Use a **Network Volume** (~$0.07/GB/mo) so models, LoRAs, and outputs persist across pod restarts. Otherwise every spin-up re-downloads ~30 GB of models.
+- For LoRA training + image generation: **Community Cloud RTX 4090** (~$0.34–0.44/hr; spot pricing sometimes $0.20/hr).
+- For HunyuanVideo-Avatar (vlogs, character replacement): **H100 80GB** (~$2–3/hr) — required for production-quality avatar work.
+- Use a **Network Volume** (~$0.07/GB/mo) so base models persist across pod restarts. Otherwise every spin-up re-downloads ~30 GB of models.
 
-### Template
+### Templates
 
-Pick a **ComfyUI** pre-built template (RunPod's community templates have several). Avoid Automatic1111 — ComfyUI is the modern standard and every tutorial assumes it.
+- **AI-Toolkit** for LoRA training — preferred over Kohya. Simpler UI, modern defaults, native SDXL + Flux support.
+- **ComfyUI** for image generation and video pipelines. Avoid Automatic1111 — ComfyUI is the modern standard and every tutorial assumes it.
 
 ### Workflow stages on cloud
 
-1. **LoRA training** (Phase 2) — Kohya_ss or AI-Toolkit, both have RunPod templates. Inputs: 30–50 reference shots + captions. Output: one `.safetensors` file (~150–300 MB) → save to `personas/<name>/lora/`.
-2. **Image generation** (Phase 2 ongoing) — ComfyUI with Flux.1-dev base + your LoRA + your prompts.md.
-3. **Video** (Phase 3) — Wan 2.1 or HunyuanVideo, image-to-video. Feed in still images from step 2.
-4. **Optional**: LivePortrait for face animation, ElevenLabs (SaaS) for voice.
+**Phase 2 — Train the persona LoRA (one-time per persona, ~$5-15)**
 
-### Cost estimate
+1. Spin up RunPod 4090 + AI-Toolkit template
+2. Upload `personas/<name>/reference/` folder (already has `.png` images + `.txt` captions paired)
+3. AI-Toolkit detects pairs automatically — no captioning work needed inside RunPod
+4. Run SDXL LoRA training (~30–60 min)
+5. Validate output across **three base models**:
+   - **Juggernaut XL** → tier-2 semi-provocative + SFW
+   - **Lustify** (or Pony Realism if Lustify Civitai-gated) → tier-3 full NSFW
+   - **RealVisXL** → backup SFW
+6. Download the `.safetensors` (~150–300 MB) to `personas/<name>/lora/`
 
-- One full content batch (week of content for one persona): ~2 hr of GPU time = ~$0.80–1.50
-- Initial LoRA training: ~$2–5
-- Video generation eats more time: budget ~$5–10/wk per persona once Phase 3 is running
+**Phase 3a — Image-to-video pipeline (general clips)**
+
+- Generate a still frame: ComfyUI with persona SDXL LoRA + appropriate base (Juggernaut for SFW/semi, Lustify for NSFW)
+- Feed to **Wan 2.2 I2V** or **HunyuanVideo-I2V** for animation
+- Output: 2–10 second clips, 4090 sufficient
+- Use case: dance replacement (driving motion video + persona reference), generated motion from prompts
+
+**Phase 3b — Avatar/vlog pipeline (character-driven video)**
+
+- **HunyuanVideo-Avatar** on RunPod H100 (4090 marginal/OOM for production quality)
+- Inputs: persona reference image (from SDXL LoRA + Juggernaut) + driving signal (motion video for dance, or audio for talking head)
+- Pair with **ElevenLabs** voice for vlog content
+- Output: lip-synced/motion-driven character video
+
+**Optional add-ons:**
+- **LivePortrait** for cheap face animation if HunyuanVideo-Avatar is overkill for a specific clip
+- **Reactor / FaceFusion** for simple face swap on existing video (lower quality but very fast)
+
+### Cost estimate (per persona)
+
+| Activity | Hardware | Cost |
+|---|---|---|
+| Initial LoRA training | 4090, ~30-60 min | $2-5 |
+| Weekly image batch (~50 images) | 4090, ~1-2 hr | $0.50-1 |
+| Weekly short video batch (~10 clips) | 4090, ~3-5 hr | $1.50-3 |
+| Weekly avatar/vlog video (~3-5 clips) | H100, ~1-2 hr | $3-6 |
+| **Monthly total per active persona** | mixed | **$30-60** |
+
+Multiple personas share base model storage (Network Volume) so cost scales sub-linearly — 4 personas ≈ $80-200/mo, not 4× single-persona cost.
 
 ---
 
@@ -114,4 +150,7 @@ Things that wasted time in the first session — write down so we don't repeat t
 - **"Ugly" / "average looking" / "no makeup" overcorrects.** Juggernaut has a strong "polished AI portrait" baseline; pushing too hard against it kills the attractiveness needed for monetization. The right level is "attractive but candid" not "amateur and plain".
 - **Low CFG (≤3) distorts faces.** With a LoRA active, run CFG **4.5–5**. Lower CFG = looser prompt adherence = asymmetric eyes, weird features, "she looks disabled" outputs.
 - **Add anti-distortion to the negative prompt** when faces look off: `asymmetric eyes, lazy eye, crossed eyes, distorted face, deformed face`.
-- **The "AI look" has a quality ceiling on SDXL.** Even with the right prompt + LoRA + settings, Juggernaut/RealVis-class models retain a recognizable "AI portrait" fingerprint. The real fix is either (a) img2img from a real reference photo, (b) ControlNet for pose/composition, or (c) moving to Flux + a custom-trained LoRA on cloud GPUs (Phase 2).
+- **The "AI look" has a quality ceiling on stock SDXL.** Even with the right prompt + LoRA + settings, Juggernaut/RealVis-class models retain a recognizable "AI portrait" fingerprint. The real fix is (a) img2img from a real reference photo at strength 0.4-0.5, (b) ControlNet for pose/composition, or (c) training a custom persona LoRA in Phase 2 — once the LoRA encodes the specific face, it generates much more cohesively than stock SDXL alone.
+- **NSFW-trained models (Lustify, Pony Realism) ignore "be modest" prompts.** Their training pushes hard toward provocative output. For tier-2 semi-provocative IG content, swap to Juggernaut XL or RealVisXL — they obey modest framing. The same persona LoRA works on all three.
+- **Captions for LoRA training should describe what *varies* (clothing, setting, pose), NOT what's constant about the persona (hair color, eye color, freckles).** The trigger word + visual data teaches constants automatically. Including constants in every caption can hurt because the model learns them as separate concepts to be told vs. baked into the trigger.
+- **Img2img canvas aspect ratio must match the source image's aspect.** Mismatched aspects produce a "superimposed on a generated background" mess instead of blending. Pick aspect first (832×1216 for 4:5 IG vertical is the standard), then generate everything at that aspect.

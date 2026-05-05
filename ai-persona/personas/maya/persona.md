@@ -64,7 +64,7 @@ Locked tokens that go into every prompt and ultimately get baked into the LoRA.
 
 | | |
 |---|---|
-| Phase 1 (reference shots) | ✅ 33 keepers (5 core / 21 standard / 7 variation), 1 culled |
+| Phase 1 (reference shots) | ✅ 31 keepers (5 core / 19 standard / 7 variation), 3 culled (1 face drift, 2 anatomy bug — mirror selfie / arm-reaching hybrid) |
 | Phase 2 (LoRA trained) | 🟡 next |
 | Phase 3 (video pipeline) | ⏳ |
 | Phase 4 (live on IG) | ⏳ |
