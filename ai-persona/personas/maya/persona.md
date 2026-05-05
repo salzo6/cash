@@ -21,7 +21,7 @@ Locked tokens that go into every prompt and ultimately get baked into the LoRA.
 - **Ethnicity / heritage cues:** ambiguous Mediterranean / mixed European
 - **Hair:** very dark / black, long, wavy, naturally parted on the side
 - **Eyes:** dark brown
-- **Build:** slim-fit athletic, medium chest
+- **Build:** slim-fit athletic. Chest is steerable in production — the LoRA learned a range from medium to full because the training set spans both. Default output skews medium; explicit prompt tokens (`large breasts`, `busty`) + higher LoRA weight (75–80%) reliably produce fuller. Treat chest size as a prompt-time dial, not a fixed identity trait.
 - **Distinguishing features:** light freckles across nose and upper cheeks, full lips, soft eyeliner
 - **Style aesthetic:** girl-next-door who knows she's hot — natural, candid, slight alt edge but not aggressive. Think "phone selfies in good light," not "studio glamour."
 
@@ -65,8 +65,8 @@ Locked tokens that go into every prompt and ultimately get baked into the LoRA.
 | | |
 |---|---|
 | Phase 1 (reference shots) | ✅ 31 keepers (5 core / 19 standard / 7 variation), 3 culled (1 face drift, 2 anatomy bug — mirror selfie / arm-reaching hybrid) |
-| Phase 2 (LoRA trained) | 🟡 next |
-| Phase 3 (video pipeline) | ⏳ |
+| Phase 2 (LoRA trained) | ✅ `maya_lora_v1.safetensors` (rank 16, 2000 steps, SDXL 1.0 base). Validated cross-base: identity holds on Juggernaut XL v9, RealVisXL v4, and gonzalomoXLFluxPony_v40. **Production stack: gonzalomo + LoRA at 60–78%** (best photorealism, matches Phase 1 aesthetic). LoRA stored at `personas/maya/lora/maya_lora_v1.safetensors`. Training config archived at `personas/maya/maya.yaml`. |
+| Phase 3 (video pipeline) | 🟡 next |
 | Phase 4 (live on IG) | ⏳ |
 | Phase 5 (paid platform) | ⏳ |
 | Created | 2026-05-04 |

@@ -4,13 +4,15 @@ The locked prompt formula for Maya Cole. Update as you iterate; this file is the
 
 ---
 
-## Identity tokens (always include)
+## Identity tokens (Phase 2 — mostly redundant now)
 
-These are the visual anchors that must appear in every positive prompt to keep the face consistent. Paste verbatim — no rephrasing.
+The Maya LoRA encodes identity. These tokens are no longer required, but including them as anchors doesn't hurt and can help on bases that need extra steering.
 
 ```
-1girl, solo, fair skin, detailed skin texture, skin fuzz, skin pores, black hair, parted on the side hair, black eyes, eyeliner, medium breasts, fit body
+1girl, solo, fair skin, detailed skin texture, skin fuzz, skin pores, black hair, parted on the side hair, black eyes, eyeliner, fit body
 ```
+
+Note: dropped `medium breasts` from the locked block — chest size is steerable per-shot (see body steering below).
 
 ---
 
@@ -24,11 +26,22 @@ amateur photo, photorealism, photorealistic
 
 ---
 
-## LoRA trigger
+## Trigger words
 
-**Phase 2 (custom Maya LoRA):** `mayacole_persona` — the unique token the trained LoRA will respond to. Goes at the **start** of every Flux prompt once the LoRA is trained.
+Two triggers, both useful. Lead the prompt with both.
 
-**Phase 1 (legacy, base model only):** `gonzalomo-amateur` — included in original generation prompts but had no effect (the LoRA wasn't actually loaded). Inert text. Drop from any future prompts.
+- **`mayacole_persona`** — the Maya LoRA's identity trigger. **Required** in every prompt for the LoRA to express her face.
+- **`gonzalomo-amateur`** — the trigger for the **gonzalomo SDXL checkpoint** (NOT a LoRA, despite earlier confusion). Activates gonzalomo's amateur-photo aesthetic when that's the base model. Drop this token if base is Juggernaut/RealVisXL/Lustify.
+
+---
+
+## Body steering (chest size)
+
+The LoRA averaged toward medium chest because that's the dataset majority, but bigger-chest shots are in the training data (lingerie / bikini / lying-down references). To steer:
+
+- **Default (medium):** no extra tokens needed.
+- **Bigger (full / busty):** add `large breasts, busty` after the triggers; bump LoRA weight from 60% → 75–80%.
+- **Maximum:** add `huge breasts` (Pony-style bases like gonzalomo respond literally); calibrate weight back down if face drifts.
 
 ---
 
@@ -40,29 +53,45 @@ cartoon, illustration, anime, painting, 3d render, cgi, low quality, blurry, def
 
 ---
 
-## Locked seed (Phase 1 only)
+## Locked production settings (Phase 2)
 
-Until the LoRA exists, lock the seed for consistency.
+The LoRA enforces identity, so seed-locking is no longer required for consistency — vary seeds freely. Settings calibrated by base model:
 
-- **Seed:** `1784676583`
+### gonzalomo (recommended for amateur-photo aesthetic)
+
+- **Base model:** `gonzalomoXLFluxPony_v40` (the Phase 1 base — best photorealism match)
+- **LoRA weight:** **60–78%** (sweet spot 60% for selfies, 75–80% for bigger-chest steering)
 - **Sampler:** DPM++ 2M Karras
 - **Steps:** 28
 - **CFG:** 5
-- **LoRA weight:** 60% (selfies) / 50% (non-selfie shots)
 - **Resolution:** 832 × 1216 (4:5 vertical, IG feed standard)
-- **Base model:** Juggernaut XL v9 8-bit *(or whatever's currently loaded — note when changed)*
+- **Tradeoff:** best aesthetic, weakest prompt-following. Use for shots where the look matters more than precise scene control.
 
-Once the LoRA is trained (Phase 2), seed-locking is no longer needed — the LoRA enforces identity.
+### Juggernaut XL v9 (alternative — better prompt control, less photoreal)
+
+- **LoRA weight:** **80–95%** (different sweet spot than gonzalomo — more polished base needs LoRA pushed harder)
+- All other settings same as above
+- **Tradeoff:** obeys complex prompts but retains a "polished AI portrait" fingerprint. Use for tier-2 IG content where scene control matters.
+
+### RealVisXL v4 (backup SFW)
+
+- **LoRA weight:** ~91%
+- More photoreal than Juggernaut, harsher / more candid lighting
+- **Tradeoff:** photoreal in technical terms but aesthetic skews "raw" rather than glamour
+
+### Lustify (tier-3 NSFW — not yet validated)
+
+- Phase 2 didn't validate the LoRA on Lustify. Expected to work since Lustify is SDXL 1.0 derivative. Test before relying on it for paid content.
 
 ---
 
 ## Full prompt template
 
 ```
-amateur photo, photorealism, photorealistic, 1girl, solo, fair skin, detailed skin texture, skin fuzz, skin pores, black hair, parted on the side hair, black eyes, eyeliner, medium breasts, fit body, [VARIATION TOKENS HERE], gonzalomo-amateur
+mayacole_persona, gonzalomo-amateur, [optional: large breasts, busty], amateur photo, photorealism, photorealistic, [VARIATION TOKENS HERE]
 ```
 
-Only the `[VARIATION TOKENS HERE]` section changes between shots. Identity + style + trigger stay locked.
+Trigger words first. Drop `gonzalomo-amateur` if base ≠ gonzalomo. Drop `large breasts, busty` if you want default body. Identity tokens (`1girl, fair skin, ...`) are optional — the LoRA handles them — but can be appended for extra steering on stubborn bases.
 
 ---
 
@@ -122,3 +151,9 @@ Notes on what's worked / failed. Append-only — keeps you from re-trying dead e
 | 2026-05-04 | `(selfie:1.2)` attention syntax | Draw Things parsing issue, contributes to artifacts — use `selfie` plain |
 | 2026-05-04 | `lowres`, `webcam photo`, `grainy` tokens | Degrades output instead of stylizing — avoid |
 | 2026-05-04 | Image-to-image with mismatched aspect ratio | Source superimposes on generated background, no blending — keep canvas at source aspect |
+| 2026-05-05 | Maya LoRA (rank 16, 2000 steps) on Juggernaut XL v9 at 80–95% | Identity locked, but Juggernaut's "polished AI portrait" fingerprint dominates — looks AI-generated even with anti-glamour negatives. Salvageable for tier-2 with prompt heavy on `amateur photo, raw photo, no makeup` tokens, but not the daily-driver. |
+| 2026-05-05 | Maya LoRA on RealVisXL v4 at 91% | More photoreal skin texture than Juggernaut, but lighting skews harsh and aesthetic feels "candid in a bad way." Backup option, not preferred. |
+| 2026-05-05 | Maya LoRA on gonzalomoXLFluxPony_v40 at 60% | Photorealism matches Phase 1 quality, identity holds, freckles visible. **This is the production base.** Caveat: gonzalomo doesn't follow complex prompts well — use terse prompts. |
+| 2026-05-05 | Default Maya output skews medium chest across seeds | LoRA averaged toward dataset majority. Fix: bump weight to 75–80% AND add `large breasts, busty` tokens — calls up the bigger-chest training shots (lingerie / bikini / lying-down framings). |
+| 2026-05-05 | LoRA weight calibration is base-dependent | Same LoRA wants different weights on different bases. gonzalomo: 60–78%. Juggernaut: 80–95%. RealVisXL: ~91%. Re-calibrate when swapping bases. |
+| 2026-05-05 | Phase 2 sample images (during training) on plain SDXL 1.0 base | Looked AI-generated and 2/5 didn't even show Maya. Misleading — plain SDXL 1.0 has poor photorealism baseline. Don't judge a LoRA by its training-step samples; judge it on production bases. |

@@ -81,6 +81,38 @@ Driven by the priority order above. Reasoning:
 
 **Cost:** ~$5-15. **Time:** a Saturday afternoon (4-6 hours including learning curve on first persona; ~2 hours for subsequent ones).
 
+### Phase 2 status (Maya, as of 2026-05-05) ✅
+
+- **`maya_lora_v1.safetensors`** trained on RunPod RTX 4090 (US-TX-3, Secure Cloud at $0.69/hr). Rank 16, 2000 steps, 35 min wall time. Saved to `personas/maya/lora/`.
+- **Cross-base validation passed:** identity holds on Juggernaut XL v9, RealVisXL v4, and gonzalomoXLFluxPony_v40. Same recognizable face across all three.
+- **Production stack locked:** gonzalomo + Maya LoRA at 60–78% weight (matches Phase 1 photorealism). Juggernaut as scene-control alternative (LoRA at 80–95% there). See `personas/maya/prompts.md` for full settings per base.
+- **Total spend:** ~$2 of pod time + $0.12 of network volume. Well under the $5–15 budget.
+- **Network Volume (50 GB, US-TX-3):** kept active so bases (~25 GB downloaded once: SDXL 1.0, Juggernaut, RealVisXL) and AI-Toolkit install persist for future training of next persona. ~$3.50/mo standing cost.
+- **Training config archived:** `personas/maya/maya.yaml` — clone for future personas, swap trigger word + dataset path.
+
+**Lessons learned (apply to future personas):**
+
+*Tooling / setup:*
+- AI-Toolkit dropped its SDXL example yaml in current versions but the trainer still supports SDXL — write the config from scratch using the Flux-24gb example as structural template, swap `is_flux: true` for `is_xl: true` and use `model.name_or_path: "stabilityai/stable-diffusion-xl-base-1.0"`.
+- Dependency dance for SDXL training on RunPod (as of mid-2026): torch **2.6.0+cu124** + torchvision 0.21.0 + torchaudio 2.6.0 + numpy <2.0. Default `pip install torch` grabs torch 2.11+cu13 which mismatches RunPod's CUDA 12.4 driver; `--force-reinstall` to the cu124 wheels.
+- HuggingFace cache MUST be redirected to the network volume before any model downloads: `export HF_HOME=/workspace/hf_cache` (also append to `~/.bashrc`). The 20 GB container disk fills up otherwise on the SDXL 1.0 base download.
+- Network Volume region locks where pods can run. US-TX-3 has both 4090 + H100 SXM available — pick a region with both for one-volume-covers-Phase-2-and-Phase-3b.
+- Don't use Crypto.com Pay for RunPod top-ups — it's app-only and traps you in their ecosystem. Use Stripe Link (card or bank) — there's even a $5 first-time-Link-user discount.
+
+*Data prep:*
+- **JupyterLab creates `.ipynb_checkpoints/` folders that get swept into training** if you preview reference images in Jupyter. AI-Toolkit reported "36 images" on Maya's run instead of 31. Delete `.ipynb_checkpoints/` from the training data folder before kicking off training. Use `find /workspace/training_data/<name>/ -type f` to verify.
+- Flatten reference shots into one folder for training (`{core,standard,variation}/*.png` glob). The folder structure is for human organization; the trainer ignores it.
+- The `_culled/` folder will get swept up by `*/*.png` globs — use explicit brace expansion `{core,standard,variation}` to exclude it.
+
+*Validation:*
+- **Don't judge a LoRA by its training-step sample images.** AI-Toolkit samples on the *training* base (plain SDXL 1.0), which has poor photorealism. The real validation is loading the LoRA on production bases (Juggernaut/Lustify/RealVisXL/gonzalomo).
+- **LoRA weight is base-dependent.** Same .safetensors wants very different strengths on different bases (gonzalomo wants 60%, Juggernaut wants 80%+). Re-calibrate per base, don't assume one weight works everywhere.
+- **Match production base aesthetic to Phase 1's reference-image source.** If your Phase 1 references were generated with Checkpoint X, the LoRA inherits X's aesthetic. Production output looks closest to Phase 1 when you load the LoRA back on X. Mismatched bases lose photorealism (LoRA can encode identity but only weakly transfers style).
+
+*Body / identity steering:*
+- **LoRAs average toward dataset majority.** If the training set has body/style variation, default outputs lean toward whichever variant is most-represented. To call up minority variations, both (a) bump LoRA weight 15–20% above default sweet spot, and (b) add explicit prompt tokens that match the visual context where that variation appeared in training (e.g. lingerie/bikini framings for bigger-chest shots).
+- For future personas where a specific body trait is critical — pre-bias the dataset rather than fighting it post-hoc. Or use weighted training: `num_repeats: 3` on the folder with the desired trait.
+
 ---
 
 ## Phase 3 — Video pipeline (RunPod)
