@@ -5,3 +5,5 @@
 {"timestamp":"2026-04-26T14:00:00-04:00","type":"deposit","book":"BetMGM","amount":100,"method":"Interac e-Transfer"}
 {"timestamp":"2026-04-27T17:30:00-04:00","type":"bet_placed","bet_id":"bet-2026-04-27-001","book":"BetMGM","sport":"MLB","event":"Tampa Bay Rays @ Cleveland Guardians 2026-04-27","market":"moneyline","side":"Guardians ML","odds":1.72,"stake":10,"is_arb":false,"notes":"Warmup rec bet 1/5. Home favorite, mainstream AL matchup. BetMGM displayed odds in decimal."}
 {"timestamp":"2026-04-27T17:30:00-04:00","type":"bet_placed","bet_id":"bet-2026-04-27-002","book":"FanDuel","sport":"MLB","event":"Boston Red Sox @ Toronto Blue Jays 2026-04-27","market":"moneyline","side":"Blue Jays ML","odds":1.70,"stake":10,"is_arb":false,"notes":"Warmup rec bet 1/5. Hometown Ontario pick on division-rival primetime game. FanDuel displayed -142 American."}
+{"timestamp":"2026-04-27T23:00:00-04:00","type":"bet_settled","bet_id":"bet-2026-04-27-001","result":"loss","payout":0}
+{"timestamp":"2026-04-27T23:00:00-04:00","type":"bet_settled","bet_id":"bet-2026-04-27-002","result":"loss","payout":0}

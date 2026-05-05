@@ -1,5 +1,5 @@
 # Trading Plan
-*Last updated: April 22, 2026*
+*Last updated: May 4, 2026*
 
 ---
 
@@ -59,6 +59,27 @@ Once you have real results and understand why each strategy works:
 - **Crypto trading bot** — use Kraken or Coinbase API (both Ontario-legal) with a Claude Code-built bot. Coinrule is a no-code alternative that sits on top of either exchange
 - **Scale arbitrage** — open more sportsbook and prediction market accounts to capture more opportunities before account limits kick in
 - **On-chain wallet copy trading** — identify wallets with a track record of early meme coin entries via DEXScreener and Cielo Finance, build an alert bot that pings when they move
+
+---
+
+## Phase 4 — AI Persona Income (Content, not Trading)
+
+### How it works
+Generate fictional people with diffusion models, run them as Instagram + paid-platform accounts (Fanvue and equivalents). IG drives free reach, paid platforms convert. Structurally different from Phases 1–3: this is **content production**, not signal-spotting. The bottleneck is character consistency and posting cadence, not market opportunity.
+
+### Setup
+- Local prototype on the M1 Pro using Draw Things + uncensored SDXL bases from Civitai (free)
+- Cloud (RunPod, ~$0.40/hr RTX 4090) for Flux LoRA training and video generation once the persona concept locks in
+- Per-persona folder structure designed to scale to 3–4 active accounts without proportional time cost — see `ai-persona/personas/`
+
+### How Claude helps
+Scaffolds the workflow and writes the per-persona prompt libraries / posting calendars / `posts.jsonl` performance logs. Claude doesn't generate images directly; it orchestrates the local + cloud diffusion stack and tracks results across personas. Implementation details: `ai-persona/`. Phased rollout: `ai-persona/PLAN.md`.
+
+### Realistic returns
+Single AI persona case studies on Fanvue cluster around **$500–3,000/mo** after a 2–4 month ramp; top operators with multi-persona pipelines clear $10k+/mo but those are full-time operations. Plan for $0 in months 1–3 (building), $500 break-even target in month 4 (single persona), then 3–4× that if scaling to multiple personas executes. Highly variable — niche, posting consistency, and disclosure choices dominate outcome.
+
+### Key risk
+Platform bans. Meta has been mass-banning low-effort AI accounts in 2025–2026. Disclosure ("AI Model" in bio) lowers ban risk but tanks engagement; undisclosed is more lucrative but accept account churn. Saturation is also real — thousands of these exist; the differentiator is niche + lore + cadence, not the generation tech. Full risk breakdown in `ai-persona/PLAN.md`.
 
 ---
 
