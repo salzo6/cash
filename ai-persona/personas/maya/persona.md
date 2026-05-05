@@ -64,10 +64,10 @@ Locked tokens that go into every prompt and ultimately get baked into the LoRA.
 
 | | |
 |---|---|
-| Phase 1 (reference shots) | 🟡 in progress — culling 50 → 30 keepers |
-| Phase 2 (LoRA trained) | ⏳ |
+| Phase 1 (reference shots) | ✅ 33 keepers (5 core / 21 standard / 7 variation), 1 culled |
+| Phase 2 (LoRA trained) | 🟡 next |
 | Phase 3 (video pipeline) | ⏳ |
 | Phase 4 (live on IG) | ⏳ |
 | Phase 5 (paid platform) | ⏳ |
 | Created | 2026-05-04 |
-| Last updated | 2026-05-04 |
+| Last updated | 2026-05-05 |

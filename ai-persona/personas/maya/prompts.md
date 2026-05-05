@@ -44,7 +44,7 @@ cartoon, illustration, anime, painting, 3d render, cgi, low quality, blurry, def
 
 Until the LoRA exists, lock the seed for consistency.
 
-- **Seed:** *(fill in once first good face is locked — find in Draw Things version history)*
+- **Seed:** `1784676583`
 - **Sampler:** DPM++ 2M Karras
 - **Steps:** 28
 - **CFG:** 5
