@@ -7,3 +7,5 @@
 {"timestamp":"2026-04-27T17:30:00-04:00","type":"bet_placed","bet_id":"bet-2026-04-27-002","book":"FanDuel","sport":"MLB","event":"Boston Red Sox @ Toronto Blue Jays 2026-04-27","market":"moneyline","side":"Blue Jays ML","odds":1.70,"stake":10,"is_arb":false,"notes":"Warmup rec bet 1/5. Hometown Ontario pick on division-rival primetime game. FanDuel displayed -142 American."}
 {"timestamp":"2026-04-27T23:00:00-04:00","type":"bet_settled","bet_id":"bet-2026-04-27-001","result":"loss","payout":0}
 {"timestamp":"2026-04-27T23:00:00-04:00","type":"bet_settled","bet_id":"bet-2026-04-27-002","result":"loss","payout":0}
+{"timestamp":"2026-05-06T13:00:00-04:00","type":"account_open","book":"Proline+","kyc_notes":"New account. OLG-operated, only Ontario-relevant book outside ROGA's shared-data clearinghouse — chosen for risk-infrastructure diversification from FanDuel/BetMGM."}
+{"timestamp":"2026-05-06T13:00:00-04:00","type":"account_open","book":"DraftKings","kyc_notes":"New account. Mainstream third book to complete the US-style trio; ROGA member, baseline limit behavior expected."}
