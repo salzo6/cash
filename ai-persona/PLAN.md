@@ -115,6 +115,31 @@ Driven by the priority order above. Reasoning:
 
 ---
 
+## Phase 2.5 — LoRA v2 retrain (deferred, triggered)
+
+**Goal:** cross-base face fidelity. v1 transfers Maya's body across bases but face is locked to gonzalomo aesthetic. v2 unlocks tier-3 NSFW (where Lustify/Pony Realism would produce more competitive paid content) and any future base swaps.
+
+**Trigger conditions** (do v2 when one fires):
+- Phase 5 paid-platform launch where gonzalomo NSFW quality is insufficient for converting paying customers
+- Audience signal during Phase 4 that single-base output is "too one-note"
+- Onboarding a 2nd persona — better to nail the v2 pipeline before scaling
+- gonzalomo gets removed from Civitai (defensive: archive a copy of the gonzalomo checkpoint to mitigate this)
+
+**v2 spec changes from v1** (face-transfer focus):
+
+- **Rank 16 → rank 32** — 2× cross-attention capacity, mostly for fine face detail
+- **`train_text_encoder: false → true`** — tighter binding between `mayacole_persona` trigger and face features specifically
+- **Caption discipline reversal:** v1 followed Phase 1 advice ("describe what varies, not constants"). v2 explicitly **includes identity face tokens in every caption** — `jet black hair, deep dark brown eyes, freckles across nose, full lips, soft eyeliner, defined jawline`. Reinforces face features ~50× through captions, not just visuals.
+- **Multi-source training data** — keep all 31 originals + add 10–15 v1-bootstrapped generations on Lustify, Juggernaut, RealVisXL (use v1 LoRA + corrective prompts to produce these, hand-pick keepers) + 5–10 real photos with face cropped/obscured. Total ~50–55 images.
+- **Weight close-up shots heavier** — `num_repeats: 2` on `core/` folder so face-detail shots get 2× training signal
+- **Steps 2000 → 2500–3000** — more iterations on the larger dataset
+
+**Cost:** ~$5 + ~5 hours human time (most of it in regenerating multi-base references and re-captioning, not the actual training).
+
+**Exit criterion:** generate Maya on Lustify, Juggernaut, RealVisXL with the same prompt and seed family — face is recognizably the same person across all three, indistinguishable from gonzalomo's rendering.
+
+---
+
 ## Phase 3 — Video pipeline (RunPod)
 
 **Goal:** produce all 4 content tiers as video, not just images. This is the unlock for the priority-order's #1 requirement.
