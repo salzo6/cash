@@ -124,6 +124,15 @@ Driven by the priority order above. Reasoning:
 - Audience signal during Phase 4 that single-base output is "too one-note"
 - Onboarding a 2nd persona — better to nail the v2 pipeline before scaling
 - gonzalomo gets removed from Civitai (defensive: archive a copy of the gonzalomo checkpoint to mitigate this)
+- **Image yield rate is unsustainable for production cadence** (e.g., 1 keeper per 20–40 generations) — v1 LoRA's face fidelity floor caps throughput too low to feed Phase 4
+
+### Phase 2.5 status (Maya, as of 2026-05-06) 🚧 triggered, runbook drafted
+
+- **Throughput trigger fired during Phase 3a setup.** v1 LoRA produces ~1 acceptable keeper per 20–40 generations, which compounds with Wan 5B Turbo's ~1/8 video keeper rate to make the funnel arithmetically unsustainable. v2 retrain is the upstream fix.
+- **Runbook + preconfigured trainer config staged on disk.** Next session can be run end-to-end without re-deriving anything:
+  - `personas/maya/UPGRADE_SESSION.md` — full sequential procedure (Mac dataset build → pod spin-up → training → Wan 14B parallel download → validation → wrap-up)
+  - `personas/maya/maya_v2.yaml` — trainer config preconfigured with v2 spec (rank 32, `train_text_encoder: true`, multi-folder dataset with `num_repeats: 2` on `core/`, 2750 steps)
+- **Bundled with Wan 14B I2V upgrade** in the same session — same root cause (throughput ceiling), same hardware, parallelizable cloud time.
 
 **v2 spec changes from v1** (face-transfer focus):
 
@@ -165,6 +174,44 @@ Two parallel video tools, depending on use case:
 **Cost:** ~$15-30 for first session (more with H100 time). Per-clip cost ongoing: $5-10 for quality video.
 
 **Reality check:** video AI in 2026 is meaningfully harder than images. Plan for ~50% reject rate on first 5-10 clips. By video #20, workflow is dialed in. Long-form videos (>10 sec) require stitching — accept slight consistency drift between stitched segments.
+
+### Phase 3a status (Maya, as of 2026-05-06) 🚧 v1 pipeline working, quality tuning ongoing
+
+- **ComfyUI + Wan 2.2 5B Turbo I2V pipeline installed on the existing US-TX-3 network volume.** Custom nodes: WanVideoWrapper (kijai), VideoHelperSuite, KJNodes. Models: Wan 2.2 5B Turbo fp16 (10 GB), umt5-xxl text encoder fp8 (6.3 GB), Wan2_2 VAE bf16 (1.4 GB) — all from `Kijai/WanVideo_comfy` on HF.
+- **First end-to-end clip generated.** Image → video → MP4 saved to `/workspace/ComfyUI/output/`. Pipeline works, but first clip showed classic over-CFG failure mode (overcooked / uncanny smile). Recalibrated settings (CFG=5→1, base_precision fp16_fast→fp16, attention_mode sageattn→sdpa, steps 30→6) improved output substantially.
+- **Operational doc written:** `personas/maya/PHASE3a_SETUP.md` — captures spin-up commands, all known-good workflow settings, OOM mitigations, and gotchas. Read this before next session to skip the rediscovery cost.
+- **Pod terminated** at session end. Volume + models persist (~$3.50/mo). Container-side pip + ffmpeg get reinstalled in ~5 min next session.
+- **Total spend:** ~$3–5 on GPU pod time. Well under the $15–30 budget.
+- **Outstanding:** save the tuned workflow JSON to repo (skip per-session fix-all-settings), generate 5–10 validation clips, test tier-3 NSFW path. Phase 3b (HunyuanVideo-Avatar / talking head) deferred until tier-2/3 pipeline is reliably producing.
+
+**Lessons learned (apply to future personas):**
+
+*Tooling / setup:*
+- **Set both `8888,8188` as exposed HTTP ports at pod creation** — editing post-deploy forces a container reset, which wipes all pip-installed packages and means redoing the install. Painful gotcha; cost us a 5-min redo in this session.
+- **CPU pods aren't deployed in every region.** US-TX-3 specifically has none, so the "cheap CPU pod for downloads" optimization doesn't apply when network volume is locked to that region. Just use the cheapest GPU pod available — the cost difference (~$0.06 vs $0.17/hr) is trivial for a 20-min download.
+- **`huggingface-cli` is deprecated;** newer HF library uses `hf download ...`. Same flags otherwise.
+- **HF_HOME redirect is still mandatory** to avoid filling the container disk during model downloads. Same gotcha as Phase 2.
+- **Never paste tokens into URLs that touch a filesystem.** A fat-fingered `git clone https://<TOKEN>@github.com/...` created a folder named after the entire URL string in this session. Token had to be revoked. Use env vars (`export GH_TOKEN=...`) or SSH keys.
+
+*Model selection:*
+- **Kijai's `WanVideo_comfy` HF repo doesn't have the canonical base 5B model** — only finetuned variants (`Wan22-Turbo`, `FastWan`). Turbo is a fine starting point because it's calibrated for 4–8 step generation, which means cheaper per-clip GPU time. But its settings differ from the example workflow's defaults — see PHASE3a_SETUP.md.
+- **Use fp8-quantized text encoder** (`umt5-xxl-enc-fp8_e4m3fn`, ~6 GB) instead of bf16 (~10 GB) — saves 5 GB on the volume with negligible quality loss. Same approach worth applying to other models if storage gets tight.
+
+*Workflow gotchas:*
+- **Example workflow defaults assume torch 2.7+ nightly.** `base_precision: fp16_fast` errors on torch 2.4.1 stable. Change to `fp16`. Will need re-checking when ComfyUI base images bump torch versions.
+- **Example workflow defaults to `attention_mode: sageattn`** but the `sageattention` package isn't installed by default. Change to `sdpa` (PyTorch built-in). Sage installation is an optional speed boost worth doing later.
+- **Example workflow's hardcoded model filenames don't match Kijai's repo paths.** ComfyUI shows "missing models" errors on first load. The in-UI "Use from Library" dropdowns let you remap without editing JSON.
+- **The `Resize Image v2` node is hardcoded to 1024×1024** — output is square unless you change it. For IG/TikTok reels, set `720×1280`. For matching SDXL stills natively, `832×1216`.
+
+*Quality tuning:*
+- **CFG=1 is critical for Turbo distilled models.** CFG > 1 produces overcooked, plastic, "creepy AI" output — the model's distillation already bakes the CFG behavior into a single forward pass, so adding more on top is double-applying. Single biggest quality fix.
+- **Avoid facial expression changes in motion prompts.** "Slight smile" → uncanny morphs. Postural motion (breathing, hair, head turn) animates cleanly; expression changes don't.
+- **Identity drift scales with clip length** — 3 sec drifts noticeably less than 5 sec. Stitching short clips beats one long clip for posts >10 sec.
+- **End-frame trick:** generate with motion *away from* the pose, then reverse the MP4 (`ffmpeg -vf reverse -af areverse`). Reads as motion converging on the pose.
+
+*Memory:*
+- **24 GB VRAM (4090) is at the edge for Wan 2.2 5B at 720p × 121 frames.** OOM warnings appeared during this session. Lower `num_frames` to 81 (3.4 sec instead of 5) or drop resolution to 624×1104 if recurring. GGUF quantized version of the main model would also halve diffusion-model VRAM (~5 GB instead of 10 GB).
+- **The `total RAM 515792 MB` line in ComfyUI startup logs is misleading** — that's the *host machine's* total, not the pod's allocation. Don't infer the pod has 500+ GB RAM.
 
 ---
 
