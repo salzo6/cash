@@ -7,6 +7,15 @@ One-day runbook for the LoRA v2 retrain + video model upgrade. Sequential — fo
 
 ---
 
+## Status (2026-05-08)
+
+- ✅ **Part 1 — Mac dataset build: complete.** `reference_v2/` assembled at `personas/maya/reference_v2/` with 56 images / 56 captions (9 core, 35 standard, 6 variation, 6 real_obscured). All captions lead with v2 identity preamble. See `ai-persona/PLAN.md` Phase 2.5 status for full composition + lessons learned.
+- 🚧 **Part 2 onward (RunPod): pending next session.** Resume from Part 2.1 (resize volume to 80 GB).
+
+**Note on Part 1.1:** the originally-prescribed text2img-with-v1-LoRA approach was replaced in this session with **img2img from v1 keepers at low denoise (0.25–0.55 per-base) with NO LoRA**. Img2img preserves face identity through the input pixels while letting the new base supply aesthetic distribution — text2img with LoRA fights itself because the LoRA pulls outputs back toward source-base aesthetic. Future personas should use the img2img approach. See PLAN.md Phase 2.5 lessons for the per-base strength calibration table.
+
+---
+
 ## Part 1 — Build the v2 dataset (Mac)
 
 The v2 dataset is the whole game. Get this right, the rest is automated.

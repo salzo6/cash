@@ -126,13 +126,44 @@ Driven by the priority order above. Reasoning:
 - gonzalomo gets removed from Civitai (defensive: archive a copy of the gonzalomo checkpoint to mitigate this)
 - **Image yield rate is unsustainable for production cadence** (e.g., 1 keeper per 20–40 generations) — v1 LoRA's face fidelity floor caps throughput too low to feed Phase 4
 
-### Phase 2.5 status (Maya, as of 2026-05-06) 🚧 triggered, runbook drafted
+### Phase 2.5 status (Maya, as of 2026-05-08) 🚧 dataset prep complete, pod work next
 
-- **Throughput trigger fired during Phase 3a setup.** v1 LoRA produces ~1 acceptable keeper per 20–40 generations, which compounds with Wan 5B Turbo's ~1/8 video keeper rate to make the funnel arithmetically unsustainable. v2 retrain is the upstream fix.
-- **Runbook + preconfigured trainer config staged on disk.** Next session can be run end-to-end without re-deriving anything:
-  - `personas/maya/UPGRADE_SESSION.md` — full sequential procedure (Mac dataset build → pod spin-up → training → Wan 14B parallel download → validation → wrap-up)
-  - `personas/maya/maya_v2.yaml` — trainer config preconfigured with v2 spec (rank 32, `train_text_encoder: true`, multi-folder dataset with `num_repeats: 2` on `core/`, 2750 steps)
-- **Bundled with Wan 14B I2V upgrade** in the same session — same root cause (throughput ceiling), same hardware, parallelizable cloud time.
+**Triggered (2026-05-06):** v1 LoRA produces ~1 acceptable keeper per 20–40 generations, which compounds with Wan 5B Turbo's ~1/8 video keeper rate to make the funnel arithmetically unsustainable. v2 retrain is the upstream fix. Bundled with Wan 14B I2V upgrade in same session — same root cause (throughput ceiling), same hardware, parallelizable cloud time.
+
+**Dataset built (2026-05-08):** v2 training set assembled at `personas/maya/reference_v2/`. Final composition:
+
+```
+core/           9 images   (5 v1 close-ups + 4 cross-base bootstraps from 001)   num_repeats: 2
+standard/      35 images   (19 v1 + 16 cross-base bootstraps from 011/012/015/022)
+variation/      6 images   (untouched from v1, after culling 023 for face quality)
+real_obscured/  6 images   (face-obscured real photos for camera-character regularization)   caption_dropout: 0.10
+TOTAL:         56 images / 56 captions
+```
+
+- **Cross-base bootstraps:** 5 v1 source images (001 close-up indoor / 011 outdoor park / 012 mirror lingerie / 015 indoor white tank / 022 balcony sunset bikini) × 4 non-original bases (Juggernaut, RealVisXL, Lustify, Mia Model) = 20 outputs. Generated via img2img at per-base calibrated strengths (Juggernaut 45%, RealVisXL 40%, Lustify 30%, Mia 25%) — input pixels carry face identity, new base supplies aesthetic.
+- **File naming convention:** bootstraps named `<source_basename>_seed<XXX>.png` to preserve seed-level provenance and group bootstraps next to their source in directory listings.
+- **Caption preamble applied:** all 56 `.txt` files lead with `mayacole_persona, jet black hair, deep dark brown eyes, freckles across nose, full lips, soft eyeliner, defined jawline,` — the 50× face-token reinforcement that's the load-bearing third lever of v2's design (alongside rank 32 + `train_text_encoder: true`).
+- **Cull:** `023_closeup_indoor_wethair` moved from `variation/` to `reference/_culled/` for face-quality issue. v1 keeper count: 33 → 32.
+
+**Next session:** `personas/maya/UPGRADE_SESSION.md` Part 2+ (RunPod) — resize volume to 80 GB, spin up 4090 in US-TX-3, container rebuild, upload `reference_v2/` to `/workspace/training_data/maya_v2/`, kick off training (~45–60 min), parallel-download Wan 14B I2V, validate on 3 bases.
+
+**Lessons learned (apply to future personas' v2 retrains):**
+
+*Cross-base bootstrap technique:*
+- **img2img at low denoise > text2img with LoRA.** Original runbook called for text2img with v1 LoRA across 3 bases. In practice that fights itself — the LoRA pulls outputs back toward source-base aesthetic, defeating the cross-base goal. Better: img2img from existing v1 keepers at 0.25–0.55 strength with NO LoRA. The keeper carries face identity (input pixels), the new base supplies the aesthetic distribution.
+- **Per-base strength calibration matters.** Juggernaut tolerates 45% (face-stable), RealVisXL 40%, Lustify 30% (strong default-face prior pulls face away if higher), Mia Model 25%. Calibrate per base; don't apply one strength globally.
+- **Drop the Phase 1 `detailed skin texture, skin fuzz, skin pores` tokens for production-base img2img.** Those were tuned for gonzalomo's interpretation. On Juggernaut/Lustify they over-render texture as visible grain artifacts.
+- **Same source × different base = same prompt × different base.** For each source image, run the same cleaned prompt across all 4 bases. That's a controlled-variable experiment (same scenario × different aesthetic = the cross-base regularization signal). Varying scenario between bases muddies that signal.
+- **Skip same-base bootstraps.** If you bootstrap from a v1 keeper using the same base that produced it, the output adds negligible signal (already covered by the original v1 dataset). Drop those.
+
+*Dataset organization:*
+- **Distribute bootstraps by source's existing folder, not by re-classifying image content.** Source-in-`core/` → bootstraps-in-`core/` (gets `num_repeats: 2`). Simpler, preserves training intent.
+- **Bootstrap file naming with seed preserves provenance.** `<source_basename>_seed<XXX>.png` lets you re-roll the exact seed if a specific output ever needs investigation, and groups bootstraps with their source in `ls` output.
+- **`real_obscured/` captions get the identity preamble too.** Even though faces aren't visible, the preamble ties the image to Maya's identity so the visual signal (real-camera character) gets associated with the trigger word. `caption_dropout_rate: 0.10` (vs 0.05 elsewhere) handles the partial decoupling — 10% of training steps drop the caption entirely, letting raw real-camera character train without trigger contamination.
+
+*Sourcing real_obscured:*
+- **Face-obscured ≠ "face partially hidden."** Sunglasses, hand-over-eyes, phone-over-eyes-only all leave the lower face (lips, jawline) visible. Lower face = identity-relevant tokens in your preamble = identity contamination. Hard rule: face must be fully not-readable. Strongest hides: back-of-head, full-side-profile-with-hair, motion blur, phone-fully-covering-whole-face.
+- **AI-generated photos defeat the entire purpose.** real_obscured/ exists to dilute synthetic-image character; AI photos add more of it. Test for AI: very plain backgrounds, ideal body proportions, generic "polished IG" feel, perfect bokeh from "real" phones. When in doubt, drop.
 
 **v2 spec changes from v1** (face-transfer focus):
 
