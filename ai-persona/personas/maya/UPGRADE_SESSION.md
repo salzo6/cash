@@ -7,12 +7,51 @@ One-day runbook for the LoRA v2 retrain + video model upgrade. Sequential — fo
 
 ---
 
-## Status (2026-05-08)
+## Status (2026-05-08, after pod session 2)
 
-- ✅ **Part 1 — Mac dataset build: complete.** `reference_v2/` assembled at `personas/maya/reference_v2/` with 56 images / 56 captions (9 core, 35 standard, 6 variation, 6 real_obscured). All captions lead with v2 identity preamble. See `ai-persona/PLAN.md` Phase 2.5 status for full composition + lessons learned.
-- 🚧 **Part 2 onward (RunPod): pending next session.** Resume from Part 2.1 (resize volume to 80 GB).
+- ✅ **Part 1 — Mac dataset build: complete.** `reference_v2/` assembled at `personas/maya/reference_v2/` with 56 images / 56 captions (9 core, 35 standard, 6 variation, 6 real_obscured). All captions lead with v2 identity preamble.
+- ✅ **Part 2 (Volume + pod setup): complete.** Volume resized 50 → 80 → 100 GB during session (14B downloads were larger than estimated). ai-toolkit's pip deps reinstalled. Torch dance redone (2.4.1 → 2.6.0+cu124, numpy<2.0).
+- ✅ **Part 3 (LoRA v2 training): complete.** `maya_lora_v2.safetensors` (rank 32, 218 MB) trained in 1:06:08 wall time on RTX 4090 in US-TX-3. Saved at `personas/maya/lora/`. Backup checkpoints from steps 2250 and 2500 also archived locally.
+- ✅ **Part 4 (Wan 14B HIGH+LOW download): complete.** Both bf16 files (~28.6 GB each, 57 GB combined) on volume at `/workspace/ComfyUI/models/diffusion_models/`. Plus LightX2V LoRA (~750 MB) and Wan 2.1 VAE (~250 MB) added during 14B troubleshooting.
+- 🟡 **Part 5 (v2 LoRA validation): partial.** Quick same-prompt comparison v1 vs v2 on 2-3 production bases — v2 looks better per eye-test. Systematic per-base validation + weight calibration **deferred** to a future session (was time-pressured by hourly billing this session). v1 weights still active in `prompts.md`; v2 weights TBD.
+- ❌ **Part 6 (Wan 14B I2V validation): blocked.** Example workflow `wanvideo_2_2_I2V_A14B_example_WIP.json` produces patch-embedding shape mismatch (model expects 36 input channels, encoder feeds 68). Issue persists across Wan 2.1 / Wan 2.2 VAE swap. Suspected root cause: the workflow is designed for fp8 KJ-quantized model files; our bf16 weights don't match its encode-node assumptions. **Deferred to next session.**
+- ✅ **Part 7 (Wrap-up): complete.** Pod terminated. Volume persists at 100 GB / ~$7/mo standing.
 
-**Note on Part 1.1:** the originally-prescribed text2img-with-v1-LoRA approach was replaced in this session with **img2img from v1 keepers at low denoise (0.25–0.55 per-base) with NO LoRA**. Img2img preserves face identity through the input pixels while letting the new base supply aesthetic distribution — text2img with LoRA fights itself because the LoRA pulls outputs back toward source-base aesthetic. Future personas should use the img2img approach. See PLAN.md Phase 2.5 lessons for the per-base strength calibration table.
+---
+
+## Resume points for next session
+
+**Priority 1 — Get Wan 14B working:**
+
+Two viable paths (not yet tested — try in this order):
+
+1. **Download the fp8 KJ files the workflow was designed for** and delete the bf16 ones to make room:
+   ```bash
+   rm /workspace/ComfyUI/models/diffusion_models/Wan2_2-I2V-A14B-HIGH_bf16.safetensors
+   rm /workspace/ComfyUI/models/diffusion_models/Wan2_2-I2V-A14B-LOW_bf16.safetensors
+   hf download Kijai/WanVideo_comfy --include "*A14B-HIGH_fp8_e4m3fn_scaled_KJ.safetensors" --local-dir /workspace/ComfyUI/models/diffusion_models/
+   hf download Kijai/WanVideo_comfy --include "*A14B-LOW_fp8_e4m3fn_scaled_KJ.safetensors" --local-dir /workspace/ComfyUI/models/diffusion_models/
+   ```
+   Then load the workflow as-is (don't change `quantization` away from `fp8_e4m3fn_scaled` this time) — LightX2V LoRA, Wan 2.1 VAE, all the workflow defaults should work in their original form.
+
+2. **Try `wanvideo_2_2_I2V_A14B_TimeToMove_example.json`** instead — different code path in WanVideoWrapper, may have a more bf16-tolerant encoder.
+
+**Priority 2 — Systematic v2 validation + weight calibration:**
+
+Same-prompt × 3 bases (Juggernaut / RealVisXL / Lustify) × 2 LoRAs (v1/v2). Update `prompts.md` with v2 per-base weights. Pass criterion: v2 holds face indistinguishably across all 3, on par with or better than v1 + extends to Lustify (which v1 never validated).
+
+---
+
+## What worked, kept as-is for future sessions
+
+- **Caption preamble strategy (50× face-token reinforcement):** Reinforcing identity tokens in every caption is the load-bearing third lever (alongside rank 32 + `train_text_encoder: true`). The cross-base bootstraps technique (img2img from v1 keepers at low denoise per-base, NO LoRA active) is now the standard playbook for any persona's v2 retrain.
+- **Trainer config (`maya_v2.yaml`):** Clone for next persona's v2, just swap trigger + dataset paths.
+
+---
+
+## Note on Part 1.1 (historical)
+
+The originally-prescribed text2img-with-v1-LoRA approach was replaced in this session with **img2img from v1 keepers at low denoise (0.25–0.55 per-base) with NO LoRA**. Img2img preserves face identity through the input pixels while letting the new base supply aesthetic distribution — text2img with LoRA fights itself because the LoRA pulls outputs back toward source-base aesthetic. Future personas should use the img2img approach. See PLAN.md Phase 2.5 lessons for the per-base strength calibration table.
 
 ---
 

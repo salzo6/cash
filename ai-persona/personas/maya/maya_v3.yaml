@@ -1,0 +1,85 @@
+---
+job: extension
+config:
+  name: "maya_lora_v3"
+  process:
+    - type: 'sd_trainer'
+      training_folder: "/workspace/output"
+      device: cuda:0
+      trigger_word: "mayacole_persona"
+      network:
+        type: "lora"
+        linear: 32
+        linear_alpha: 32
+      save:
+        dtype: float16
+        save_every: 250
+        max_step_saves_to_keep: 4
+        push_to_hub: false
+      datasets:
+        - folder_path: "/workspace/training_data/maya_v2/core"
+          caption_ext: "txt"
+          caption_dropout_rate: 0.05
+          shuffle_tokens: false
+          cache_latents_to_disk: true
+          resolution: [1024]
+          num_repeats: 2
+        - folder_path: "/workspace/training_data/maya_v2/standard"
+          caption_ext: "txt"
+          caption_dropout_rate: 0.05
+          shuffle_tokens: false
+          cache_latents_to_disk: true
+          resolution: [1024]
+          num_repeats: 1
+        - folder_path: "/workspace/training_data/maya_v2/variation"
+          caption_ext: "txt"
+          caption_dropout_rate: 0.05
+          shuffle_tokens: false
+          cache_latents_to_disk: true
+          resolution: [1024]
+          num_repeats: 1
+        - folder_path: "/workspace/training_data/maya_v2/real_obscured"
+          caption_ext: "txt"
+          caption_dropout_rate: 0.10
+          shuffle_tokens: false
+          cache_latents_to_disk: true
+          resolution: [1024]
+          num_repeats: 1
+      train:
+        batch_size: 1
+        steps: 2750
+        gradient_accumulation_steps: 1
+        train_unet: true
+        train_text_encoder: true
+        text_encoder_lr: 5e-5
+        gradient_checkpointing: true
+        noise_scheduler: "ddpm"
+        optimizer: "adamw8bit"
+        lr: 1e-4
+        ema_config:
+          use_ema: true
+          ema_decay: 0.99
+        dtype: bf16
+      model:
+        name_or_path: "/workspace/models/gonzalomoXLFluxPony_v40UnityXLDMD.safetensors"
+        is_xl: true
+        is_v_pred: false
+      sample:
+        sampler: "ddpm"
+        sample_every: 250
+        width: 832
+        height: 1216
+        prompts:
+          - "[trigger], jet black hair, deep dark brown eyes, freckles across nose, full lips, soft eyeliner, defined jawline, selfie, 24mm lens, upper body, indoor, black tank top, soft natural light, looking at camera"
+          - "[trigger], jet black hair, deep dark brown eyes, freckles across nose, full lips, soft eyeliner, defined jawline, mirror selfie, full body, holding phone, bedroom, white t-shirt"
+          - "[trigger], jet black hair, deep dark brown eyes, freckles across nose, full lips, soft eyeliner, defined jawline, candid photo, sitting at coffee shop table, holding coffee cup, oversized sweater"
+          - "[trigger], jet black hair, deep dark brown eyes, freckles across nose, full lips, soft eyeliner, defined jawline, lying on bed, headshot, soft morning light"
+          - "[trigger], jet black hair, deep dark brown eyes, freckles across nose, full lips, soft eyeliner, defined jawline, full body shot, walking outdoor street, looking ahead not at camera"
+        neg: "cartoon, illustration, anime, painting, 3d render, low quality, blurry, deformed, asymmetric eyes, distorted face, plastic skin"
+        seed: 1784676583
+        walk_seed: false
+        guidance_scale: 5
+        sample_steps: 28
+meta:
+  name: "[name]"
+  version: '3.0'
